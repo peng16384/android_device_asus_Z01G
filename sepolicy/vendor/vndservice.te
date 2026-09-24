@@ -1,0 +1,12 @@
+# gxFpDaemon 註冊的 vndbinder service。
+#
+# AOSP 的 system/sepolicy/public/domain.te:519 明文禁止用通用型別：
+#     neverallow * default_android_vndservice:service_manager { add find };
+# 也就是每個 vndservice 都必須有自己的 type（編譯期就會擋，不是執行期）。
+#
+# service 名稱不是猜的 —— service_manager 類別的 AVC 原文會帶 `service=`：
+#     avc: denied { add }  for service=goodix.fp pid=1292 scontext=u:r:init:s0
+#     avc: denied { find } for service=goodix.fp pid=2220
+#                          scontext=u:r:hal_fingerprint_default:s0
+# pid 1292 = gxFpDaemon、pid 2220 = fps_hal。
+type gx_fpd_vndservice, vndservice_manager_type;

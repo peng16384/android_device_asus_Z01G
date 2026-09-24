@@ -1,0 +1,86 @@
+# 自訂的 property type
+#
+# ############ 為什麼不能直接 allow ############
+# 這些屬性目前落在 AOSP 的通用 context 上（default_prop / system_prop /
+# wifi_prop），而 system/sepolicy/public/domain.te:533 有：
+#
+#     neverallow { domain -init -vendor_init } default_prop:property_service set;
+#
+# 也就是**除了 init 與 vendor_init，誰都不准寫 default_prop**。
+# 直接加 allow 會在編譯期被 neverallow 擋下來（不是執行期才發現）。
+# 正解是給這些屬性定義專屬的 type，再只授權真正需要的網域。
+# ##############################################
+#
+# ############ 為什麼會落到通用 context ############
+# Android 8 不要求 vendor 屬性加 `vendor.` 前綴，Android 9 + Treble 才要求。
+# qcom 的 sepolicy 因此只認得加了前綴的版本：
+#     vendor.sys.listeners.registered  u:object_r:vendor_tee_listener_prop:s0
+#     vendor.wlan.                     u:object_r:vendor_wifi_prop:s0
+# 但我們的 blob 是 Oreo 編的，用的是舊的無前綴名稱
+# （sys.listeners.registered、wlan.sta.freq），於是掉進 AOSP 的
+# `sys.` -> system_prop、`wlan.` -> wifi_prop 這種寬鬆的萬用規則裡。
+#
+# 改 blob 不可能（閉源），所以在這裡為這些「合法但過時」的名稱
+# 定義專屬 type，讓授權範圍維持最小。
+# ################################################
+
+# ASUS 自己的
+type asus_audbg_prop, property_type;        # persist.asus.audbg（耳機孔 UART/音訊切換）
+type asus_gps_prop, property_type;          # persist.np.asus.gps.*
+type asus_sensors_prop, property_type;      # sys.asus.accelerometer_on
+type asus_display_sar_prop, property_type;  # sys.asus.sar.*（SAR 依螢幕狀態調功率）
+type asus_audio_eu_prop, property_type;     # use.audio.eu.parameters（選 EU mixer_paths）
+
+# Oreo 時期的舊名稱（對應 qcom 的 vendor.* 版本）
+type legacy_camera_dbg_prop, property_type;  # persist.camera.debug.*
+type legacy_net_doxlat_prop, property_type;  # persist.net.doxlat
+type legacy_tee_listener_prop, property_type;# sys.listeners.registered
+type legacy_nfc_chipid_prop, property_type;  # sys.nfc.nq.*
+type legacy_thermal_prop, property_type;     # sys.thermal.*
+type legacy_wlan_sta_prop, property_type;    # wlan.sta.*
+
+# --- 第二批 ---------------------------------------------------------------
+# 這三條的屬性名是從 AVC 原文的 `property=` 欄位讀到的，不是猜的：
+#   avc: denied { set } for property=audio.asus.amp_cal        scontext=hal_audio_default
+#   avc: denied { set } for property=camera.hw.eeprom.candidate scontext=hal_camera_default
+#   avc: denied { set } for property=persist.np.asus.agps.ntpinjecttime scontext=system_server
+type asus_audio_amp_prop, property_type;     # audio.asus.amp_cal（TAS2557 功放校正狀態）
+type legacy_camera_eeprom_prop, property_type; # camera.hw.eeprom.candidate
+type asus_agps_prop, property_type;          # persist.np.asus.agps.*
+
+# fpseek 偵測到是哪一顆 Goodix 之後寫這條，fps_hal 再據此挑 .so
+# （原本落在 AOSP 的 `ro.hardware.` -> vendor_default_prop）
+type asus_fp_hw_prop, property_type;         # ro.hardware.fingerprint
+
+# --- 第三批 ---
+# gxFpDaemon / fps_hal 寫的整組版本與就緒旗標（getprop | grep goodix 可看到 8 條）
+type goodix_fp_prop, property_type;          # goodix.fp.*、goodix.version.*
+type asus_camera_app_prop, property_type;    # camera.app.asuscamera
+
+# --- 第四批 ---
+# qcom 的 crash 偵測計數（init.qcom.crashdata.sh 寫的）
+# 原本落在 AOSP 的 `persist.vendor.` -> vendor_default_prop
+type vendor_crash_prop, property_type;       # persist.vendor.crash.*
+
+# --- 第五批 ---
+# ASUS 的顯示 PVC／ABC（自動亮度與色彩），camera.msm8998.so 會寫
+type asus_display_pvc_prop, property_type;   # persist.asus.pvcabc
+
+# --- 第十一批：ctl.start$<服務名> ---------------------------------------
+# Android 9 的 init 在檢查「誰可以 start 某個服務」時，會用
+# `ctl.start$<服務名>` 當 key 去查 property_contexts，所以可以逐一服務授權。
+# AOSP 的 fallback 是 `ctl.start$` -> ctl_start_prop（等於「能 start 任何服務」）。
+#
+# qcom 只定義了 `ctl.vendor.<名>` 的版本（Treble 之後的命名），
+# 我們的 blob 是 Oreo 編的，init.qcom.rc 用的是**沒有 vendor 前綴**的舊名稱，
+# 所以全部掉進 ctl_start_prop，在 enforcing 下被擋、那些服務根本沒起來。
+type ctl_legacy_iop_prop, property_type;
+type ctl_legacy_ipacm_prop, property_type;
+type ctl_legacy_ipacmdiag_prop, property_type;
+type ctl_legacy_netmgrd_prop, property_type;
+type ctl_legacy_qmuxd_prop, property_type;
+type ctl_legacy_qti_prop, property_type;
+type ctl_legacy_sensors_prop, property_type;
+
+# fpservice.sh 的 `start gx_fpd`（它走 /vendor/bin/sh 落在 qti_init_shell）
+type ctl_legacy_gxfpd_prop, property_type;

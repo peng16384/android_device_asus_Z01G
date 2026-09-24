@@ -1,0 +1,62 @@
+# 把 property.te 定義的 type 對應到實際屬性名稱。
+#
+# 比對規則是「最長前綴優先」，所以這裡的具體前綴會蓋過 AOSP 的
+# `sys.` -> system_prop、`wlan.` -> wifi_prop 這類萬用規則。
+#
+# 每一條後面的網域，就是 sepolicy/vendor/*.te 裡實際被授權的那個。
+
+# --- ASUS 自己的 ---
+persist.asus.audbg          u:object_r:asus_audbg_prop:s0
+persist.np.asus.gps.        u:object_r:asus_gps_prop:s0
+sys.asus.accelerometer_on   u:object_r:asus_sensors_prop:s0
+sys.asus.sar.               u:object_r:asus_display_sar_prop:s0
+use.audio.eu.parameters     u:object_r:asus_audio_eu_prop:s0
+
+# --- Oreo 舊名稱（qcom 只認得 vendor.* 版本）---
+persist.camera.debug.       u:object_r:legacy_camera_dbg_prop:s0
+persist.net.doxlat          u:object_r:legacy_net_doxlat_prop:s0
+sys.listeners.registered    u:object_r:legacy_tee_listener_prop:s0
+sys.nfc.nq.                 u:object_r:legacy_nfc_chipid_prop:s0
+sys.thermal.                u:object_r:legacy_thermal_prop:s0
+wlan.sta.                   u:object_r:legacy_wlan_sta_prop:s0
+
+# --- 第二批 ---
+audio.asus.amp_cal              u:object_r:asus_audio_amp_prop:s0
+camera.hw.eeprom.candidate      u:object_r:legacy_camera_eeprom_prop:s0
+persist.np.asus.agps.           u:object_r:asus_agps_prop:s0
+ro.hardware.fingerprint         u:object_r:asus_fp_hw_prop:s0
+
+# --- 第三批 ---
+goodix.                         u:object_r:goodix_fp_prop:s0
+camera.app.asuscamera           u:object_r:asus_camera_app_prop:s0
+
+# --- 第四批 ---
+# camera. 這個前綴涵蓋 camera.app.asuscamera 與 camera.beautylive.support_torch，
+# 而 camera.hw.eeprom.candidate 有更長的專屬前綴（最長前綴優先），不受影響。
+camera.                         u:object_r:asus_camera_app_prop:s0
+persist.vendor.crash.           u:object_r:vendor_crash_prop:s0
+
+# --- 第五批 ---
+persist.asus.pvcabc             u:object_r:asus_display_pvc_prop:s0
+
+# --- 第十一批 ---
+# 比對是最長前綴優先，所以這些會蓋過 AOSP 的 `ctl.start$` -> ctl_start_prop
+ctl.start$iop               u:object_r:ctl_legacy_iop_prop:s0
+ctl.start$ipacm-diag        u:object_r:ctl_legacy_ipacmdiag_prop:s0
+ctl.start$ipacm             u:object_r:ctl_legacy_ipacm_prop:s0
+ctl.start$netmgrd           u:object_r:ctl_legacy_netmgrd_prop:s0
+ctl.start$qmuxd             u:object_r:ctl_legacy_qmuxd_prop:s0
+ctl.start$qti               u:object_r:ctl_legacy_qti_prop:s0
+ctl.start$sensors           u:object_r:ctl_legacy_sensors_prop:s0
+
+# --- 第十二批 ---
+ctl.start$gx_fpd            u:object_r:ctl_legacy_gxfpd_prop:s0
+# 以下三條都直接沿用 qcom 既有的型別 —— 我們的 blob 是 Oreo 編的，
+# 用的是沒有 vendor 前綴的舊名稱，qcom 只標了 Treble 之後的版本：
+#     ro.vendor.alarm_boot             -> vendor_alarm_boot_prop
+#     vendor.gpu.available_frequencies -> vendor_gpu_prop
+#     persist.vendor.wigig.            -> wigig_prop
+# qti_init_shell 對前兩個的 set_prop 在 qcom 的 init_shell.te 裡本來就有。
+ro.alarm_boot                   u:object_r:vendor_alarm_boot_prop:s0
+ro.gpu.available_frequencies    u:object_r:vendor_gpu_prop:s0
+persist.asus.wigig.             u:object_r:wigig_prop:s0

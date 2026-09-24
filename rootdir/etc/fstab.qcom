@@ -1,0 +1,43 @@
+# Android fstab file — ASUS ZenFone 4 Pro (ZS551KL / Z01G)
+#
+# 以本機原廠 /vendor/etc/fstab.qcom 為底改寫，差異：
+#   1. 加上 /system —— 原廠是靠 kernel cmdline 的
+#      dm="system none ro,0 1 android-verity /dev/sda19" 掛載，
+#      LineageOS 自簽不做 dm-verity，改由 fstab 直接掛，且不加 verify flag。
+#   2. 非 Treble，沒有 vendor 分割，vendor 就在 /system/vendor 底下。
+#
+# 分割區對應（來自 /dev/block/bootdevice/by-name/）：
+#   system sda19 / userdata sda20 / cache sda18 / persist sda2
+#   modem  sde5  / bluetooth sde6 / dsp sda12 / misc sda3
+#
+#<src>                                  <mnt_point>      <type>  <mnt_flags and options>                         <fs_mgr_flags>
+/dev/block/bootdevice/by-name/system    /system          ext4    ro,barrier=1                                    wait
+# bring-up 階段用 encryptable 而不是 forceencrypt：
+#   forceencrypt 會讓剛格式化（未加密）的 /data 在 fs_mgr_mount_all 時回傳
+#   「需要加密」，init 改設 vold.decrypt=trigger_encryption 進入加密流程，
+#   而不是繼續跑 on post-fs-data。那個流程需要 vold + keymaster HAL，
+#   而這台是 Qualcomm ICE 硬體加密（同機種 TWRP 樹有 TARGET_HW_DISK_ENCRYPTION := true，
+#   我們還沒設）。實測症狀：init 跑完 on post-fs（/cache 的 backup 目錄有建），
+#   但 /data 完全是空的，畫面停在 logo。
+#   encryptable 讓 /data 維持未加密直接掛載，開機流程照常往下走。
+#   等能穩定開機之後再換回 forceencrypt 並補 TARGET_HW_DISK_ENCRYPTION。
+/dev/block/bootdevice/by-name/userdata  /data            ext4    noatime,nosuid,nodev,barrier=1,noauto_da_alloc,discard  wait,check,encryptable=footer,quota
+/dev/block/bootdevice/by-name/cache     /cache           ext4    noatime,nosuid,nodev,barrier=1                  wait,check
+/dev/block/bootdevice/by-name/persist   /persist         ext4    noatime,nosuid,nodev,barrier=1                  wait
+/dev/block/bootdevice/by-name/modem     /firmware        vfat    ro,shortname=lower,uid=1000,gid=1000,dmask=226,fmask=333,context=u:object_r:firmware_file:s0   wait
+/dev/block/bootdevice/by-name/bluetooth /bt_firmware     vfat    ro,shortname=lower,uid=1002,gid=3002,dmask=227,fmask=337,context=u:object_r:bt_firmware_file:s0 wait
+/dev/block/bootdevice/by-name/dsp       /dsp             ext4    ro,nosuid,nodev,barrier=1                       wait
+/dev/block/bootdevice/by-name/misc      /misc            emmc    defaults                                        defaults
+/dev/block/zram0                        none             swap    defaults                                        zramsize=536870912
+
+# /boot 與 /recovery 不會被 fs_mgr 掛載（emmc + defaults），但**打包時必須有**：
+#   build/make/tools/releasetools/common.py CheckSize() 會查
+#   info_dict["fstab"]["/boot"] 來檢查映像有沒有超過分割區大小，
+#   缺了會在最後打包 OTA zip 時 KeyError: '/boot'。
+#   （同機種的 shakalaca/android_device_asus_Z01G/recovery.fstab 也有這兩條。）
+/dev/block/bootdevice/by-name/boot      /boot            emmc    defaults                                        defaults
+/dev/block/bootdevice/by-name/recovery  /recovery        emmc    defaults                                        defaults
+
+# 可移除裝置
+/devices/soc/c0a4900.sdhci/mmc_host*                       /storage/sdcard1  vfat  nosuid,nodev  wait,voldmanaged=sdcard1:auto
+/devices/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto*   /storage/usbotg   vfat  nosuid,nodev  wait,voldmanaged=usbotg:auto

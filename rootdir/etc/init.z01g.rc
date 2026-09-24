@@ -1,0 +1,255 @@
+# Z01G 裝置專屬 init —— 從原廠 boot ramdisk 的 init.asus.rc 抽出必要的部分。
+#
+# ############################################################################
+# 這個檔案存在的原因：ASUS 把裝置專屬的 init 放在 **boot ramdisk** 裡
+# （init.asus.rc、init.asus.debugtool.rc、init.asus.thermald.rc），
+# 不是放在 /system/vendor/etc/init。我們的 ramdisk 是 AOSP 產生的，
+# 所以那 43 KB 的 init.asus.rc 整份從來沒有被帶過來。
+#
+# 原廠那份已抽出存在 work/stock_ramdisk/ 供比對
+# （tools/64_stock_ramdisk_probe.sh 會重新產生）。
+# 刻意**不**整份照抄 —— 它有 30 個 service，大多指向我們沒有的 ASUS 工廠測試
+# 與 BMMI/SMMI 工具，而且會跟 AOSP 的 init.rc 打架。只搬真正需要的。
+# ############################################################################
+
+# ---------------------------------------------------------------------------
+# 指紋 / Home 鍵
+#
+# 這台的 Home 鍵就是指紋辨識器。goodix 的驅動自己不會產生 KEY_HOME ——
+# 看 kernel 原始碼 drivers/sensors/fingerprint/fphandle.c:1244：
+#     input_report_key(gf_dev->input, key_map[i].report_val, gf_key.value);
+# 這行在 ioctl 處理常式裡，也就是「使用者空間的 daemon 判斷這是一次 Home 輕觸
+# 之後，再叫驅動送出按鍵」。所以沒有 daemon 就完全沒有 input event
+# （實測 getevent：按 Home 一個事件都沒有，而同在 focal-touchscreen 上的
+#  BACK / APP_SWITCH 都正常）。
+#
+# 原廠的啟動鏈（init.asus.rc）：
+#   on fs               chown/chmod /dev/goodix_fp
+#   service fpseek      偵測是哪一顆 Goodix，setprop ro.hardware.fingerprint
+#                       （strings 可以看到 "ro.hardware.fingerprint"、"gx5206"、
+#                         "gx5216"、"Fingreprint : Got goodix module"）
+#   on property:ro.hardware.fingerprint=*   start fpservice / start fps_hal
+#   fpservice.sh        依屬性值 start gx_fpd
+#   gx_fpd              gxFpDaemon，真正跟感測器對話、注入 KEY_HOME 的那支
+#
+# 我們缺了整條鏈，所以 /dev/goodix_fp 停在 ueventd 的預設值：
+#     crw------- 1 root root   /dev/goodix_fp
+# 而 fps_hal 是以 user system 執行 -> 打不開 -> openHal 失敗 ->
+#     FingerprintService: Fingerprint HAL id: 0
+#     FingerprintService: mDaemon was null, reconnect to fingerprint  （無限重試）
+# Settings 裡也就看不到指紋選項。
+#
+# 先驗證過這幾支在 Pie 上連得起來（tools/65_fpseek_probe.sh）：
+#   gxFpDaemon 40 個符號缺 0 / fpseek 26 個缺 0 / libfpservice.so 104 個缺 0
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# /asusfw —— ASUS 專屬校正資料分割（sda17, 64 MB ext4）
+#
+# 原廠由 boot ramdisk 的 init.asus.rc 掛載，我們的 ramdisk 是 AOSP 產生的，
+# 所以從來沒掛過。裡面是這台機器出廠時寫入的校正資料：
+#   audio/acdbdata/ZS551KL{,_MP}/   ACDB 音效校正
+#   audio/mixer_paths_ZS551KL*.xml  mixer 路徑
+#   audio/audio_amp_fw/             TAS2557 智慧功放韌體
+#   ois/                            相機 OIS 防手震韌體
+#
+# 兩個 blob 都是先找 /asusfw 再退到 /system、/vendor（strings 可見）：
+#   audio.primary.msm8998.so : /asusfw/audio/mixer_paths_ZS551KL{,_EU,_leak}.xml
+#   libacdbloader.so         : /asusfw/audio/acdbdata
+#
+# ############ mkdir 一定要放在 on init ############
+# AOSP 的 init.rc 在 `on post-fs` 的第一條命令就是
+#     mount rootfs rootfs / ro remount
+# 之後 rootfs 就不能再建目錄了。放在 post-fs 的實測結果：
+#     init: Command 'mkdir /asusfw 0771 system system' action=post-fs
+#           failed: mkdir() failed: Read-only file system
+# ##################################################
+#
+# 刻意掛「唯讀」：CLAUDE.md 的安全規則只允許寫 boot/recovery/system/
+# userdata/cache。代價是 audio.primary 想寫的 tas2557_cal.bin 存不進去
+# （log 會出現 "no tas2557_cal.bin in asusfw , start calibration."），
+# 每次開機重跑一次功放校正而已，不影響發聲。
+# ---------------------------------------------------------------------------
+on init
+    mkdir /asusfw 0771 system system
+
+on post-fs
+    wait /dev/block/bootdevice/by-name/asusfw
+    # ⚠ 一定要有 context= ——
+    # 這顆 ext4 是 ASUS 的分割，裡面沒有任何 security.selinux xattr。
+    # 不指定 context 的話整個掛載點與底下的檔案都會是 `unlabeled`
+    # （實測 ls -dZ /asusfw 回 u:object_r:unlabeled:s0），
+    # permissive 下看不出問題，enforcing 下音訊 HAL 就讀不到校正檔了。
+    # 與 /firmware、/bt_firmware 的做法一致。
+    mount ext4 /dev/block/bootdevice/by-name/asusfw /asusfw ro nosuid nodev noatime context=u:object_r:asusfw_file:s0
+
+on fs
+    # 原廠 init.asus.rc 也是放在 on fs，時間點夠早（ueventd 在 cold boot 就建好節點）
+    chown system root /dev/goodix_fp
+    chmod 0760 /dev/goodix_fp
+    chown system root /dev/fingerprint
+    chmod 0760 /dev/fingerprint
+    chown system root /dev/vfsspi
+    chmod 0760 /dev/vfsspi
+
+# ⚠ user 必須是 system，group 必須含 drmrpc —— 兩個都是 DAC 的要求，
+#   而且**兩個失敗都完全沒有 AVC**（原因見 sepolicy/vendor/gx_fpd.te）。
+#
+#   fpseek 要開兩個節點：
+#       /dev/goodix_fp   system:root  0760   <- 本檔 `on fs` 自己設的
+#       /dev/qseecom     system:drmrpc 0660  <- ueventd 設的
+#   原本寫 `user root group system`：uid 0 既不是 owner（system），
+#   gid 也不在 root/drmrpc 裡 -> 兩個都要 CAP_DAC_OVERRIDE，
+#   而 SELinux 不給 fpseek 網域那個 capability（domain.te:1385 的
+#   attribute 限制），於是 open 直接失敗：
+#       FPSEEK-V3: open /dev/goodix_fp failed.
+#       QSEECOMAPI: Error::Failed to open /dev/qseecom device
+#   後果是 ro.hardware.fingerprint 沒設上 -> fpservice 不啟動 ->
+#   gx_fpd 不啟動 -> 指紋與 Home 鍵全死。
+#
+#   改成 user system 之後它是 /dev/goodix_fp 與 /dev/qseecom 的 owner，
+#   不需要任何 capability。drmrpc 留著是因為 qseecom 的 group 是它
+#   （owner 那條就夠，但保留與其他 QSEE 客戶端一致）。
+service fpseek /vendor/bin/fpseek
+    class late_start
+    user system
+    group system drmrpc
+    oneshot
+
+service gx_fpd /vendor/bin/gxFpDaemon
+    class late_start
+    user system
+    group system
+    disabled
+
+service fpservice /vendor/bin/sh /vendor/etc/fpservice.sh
+    class late_start
+    user root
+    group system
+    oneshot
+    disabled
+
+on property:ro.hardware.fingerprint=*
+    start fpservice
+
+# ---------------------------------------------------------------------------
+# 其他裝置節點的權限（同樣來自 init.asus.rc，我們一樣缺）
+#
+# 相機相關的幾個先補上：ASUS 的 RGB 感測器、雷射對焦、Rockchip pre-ISP。
+# framework 已經能列出 3 個相機裝置，但實際開啟時這些節點的權限會有影響。
+# ---------------------------------------------------------------------------
+on post-fs-data
+    # ---------------------------------------------------------------------
+    # wpa_supplicant 的設定檔
+    #
+    # ASUS 的 init.qcom.rc 定義的 wpa_supplicant 服務是 Oreo 形式，
+    # 用 -c 指定 /data/misc/wifi/{wpa,p2p}_supplicant.conf。
+    # 在 Oreo 那兩份是由框架從範本複製過去的；Android 9 改用 HIDL 設定
+    # supplicant，不再做這個複製，於是檔案永遠不存在：
+    #     wpa_supplicant: Failed to open config file
+    #                     '/data/misc/wifi/p2p_supplicant.conf'
+    #     SupplicantStaIfaceHal: Failed to get ISupplicant
+    #     WifiNative: Failed to connect to supplicant
+    # supplicant 一退出，整個 Wi-Fi 就起不來（驅動與 wlan0 都是好的）。
+    #
+    # /data/misc/wifi 與 sockets 目錄由 init.qcom.rc 的 on post-fs-data 建立
+    # （第 318-320 行），那個區塊比這裡早跑，所以目錄一定存在。
+    #
+    # 每次開機覆寫是可以的：Android 9 的已儲存網路存在
+    # /data/misc/wifi/WifiConfigStore.xml，不在 wpa_supplicant.conf 裡。
+    # ---------------------------------------------------------------------
+    copy /vendor/etc/wifi/wpa_supplicant.conf /data/misc/wifi/wpa_supplicant.conf
+    chown wifi wifi /data/misc/wifi/wpa_supplicant.conf
+    chmod 0660 /data/misc/wifi/wpa_supplicant.conf
+    copy /vendor/etc/wifi/p2p_supplicant.conf /data/misc/wifi/p2p_supplicant.conf
+    chown wifi wifi /data/misc/wifi/p2p_supplicant.conf
+    chmod 0660 /data/misc/wifi/p2p_supplicant.conf
+
+on post-fs
+    # ---------------------------------------------------------------------
+    # Wi-Fi 驅動的啟動節點
+    #
+    # qcacld 是編進 kernel 的（CONFIG_QCA_CLD_WLAN=y），不是模組，
+    # 所以 HAL 不能用 insmod 啟動它 —— 改成寫這個 sysfs 節點
+    #（BoardConfig 的 WIFI_DRIVER_STATE_CTRL_PARAM）。
+    # 節點由驅動的 initcall 建立：
+    #     __ATTR(boot_wlan, 0220, NULL, wlan_boot_cb)
+    # 預設是 root:root 0220，而 wifi HAL 跑在 user wifi / group wifi gps：
+    #     android.hardware.wifi@1.0-service:
+    #         Failed to access driver state control param Permission denied
+    #         Failed to load WiFi driver
+    # 所以要把擁有者改成 wifi。
+    # ---------------------------------------------------------------------
+    chown wifi wifi /sys/kernel/boot_wlan/boot_wlan
+    chmod 0220 /sys/kernel/boot_wlan/boot_wlan
+
+    chown root camera /dev/asusRgbSensor
+    chmod 0660 /dev/asusRgbSensor
+    chown root camera /dev/asusFRGBSensor
+    chmod 0660 /dev/asusFRGBSensor
+    chown shell camera /dev/LaserSensor
+    chmod 0660 /dev/LaserSensor
+    chown system camera /dev/rk_preisp
+    chmod 0660 /dev/rk_preisp
+
+# ---------------------------------------------------------------------------
+# 3.5mm 耳機孔：把它從 UART 除錯序列埠切回音訊模式
+#
+# ASUS 把 3.5mm 孔設計成兩用，而且 kernel 的編譯預設是「序列埠」那一邊：
+#     sound/soc/codecs/wcd9335.c:164   int g_DebugMode = 1;
+# wcd-mbhc-v2.c 的插拔中斷處理裡有 ASUS 加的一行：
+#     if (g_DebugMode)
+#             goto exit;
+# 所以插耳機時機械中斷有觸發、detection_type 也是對的，但直接跳過
+# 插頭類型偵測就離開。實測 log：
+#     wcd_mbhc_mech_plug_detect_irq: enter
+#     wcd_mbhc_swch_irq_handler: mbhc->current_plug: 0 detection_type: 1
+#     wcd_cancel_hs_detect_plug: Canceling correct_plug_swch
+#     wcd_mbhc_swch_irq_handler: leave          <- 什麼都沒做
+# 手動 `echo 0 > /proc/driver/audio_debug` 之後才會走完整流程：
+#     wcd_mbhc_detect_plug_type -> wcd_correct_swch_plug
+#     tasha_wcd_mbhc_calc_impedance: HPH_L = 43(ohms), HPH_R = 43(ohms)
+#     wcd_mbhc_report_plug: Reporting insertion 3(3)   <- SND_JACK_HEADSET
+#
+# 這兩支腳本是原廠的機制（/system/etc/，由 tools/31 的 SYSTEM_SCAN_FILES 收）：
+#   checkaudbg.sh  等 /proc/driver/audio_codec_status 就緒（最多 120 秒），
+#                  再依 ro.boot.pre-ftm 決定 persist.asus.audbg
+#                  （工廠模式 = 1 走序列埠，一般 = 0 走音訊）
+#   audbg.sh       把 persist.asus.audbg 的值寫進 /proc/driver/audio_debug
+#
+# 刻意保留這條兩段式路徑而不是在 init 裡直接 write 0，因為它同時是
+# 「把耳機孔變回序列埠主控台」的逃生門 —— 之後如果又遇到開不了機、
+# adb 也上不來的狀況，setprop persist.asus.audbg 1 就能拿到 kernel console。
+# ---------------------------------------------------------------------------
+# ⚠ 這兩支刻意用 /vendor/bin/sh 而不是 /system/bin/sh。
+#
+# device/qcom/sepolicy 有 `domain_auto_trans(init, vendor_shell_exec,
+# qti_init_shell)` —— 只有 **/vendor/bin/sh**（vendor_shell_exec）會觸發
+# 網域轉換。寫 /system/bin/sh（shell_exec）的話沒有對應的轉換規則，
+# 腳本就整個跑在 init 網域裡，而 AOSP 的 neverallow 不允許 init
+# 直接執行它（實測 avc: denied { execute_no_trans } path="/system/bin/sh"
+# scontext=u:r:init:s0）。
+#
+# 兩支 sh 是同一個 toybox，只差在 SELinux 標記：
+#     /system/bin/sh  u:object_r:shell_exec:s0
+#     /vendor/bin/sh  u:object_r:vendor_shell_exec:s0
+# 腳本本身留在 /system/etc/（blob 原本的位置），qti_init_shell 讀得到。
+
+service asus_checkaudbg /vendor/bin/sh /system/etc/init.asus.checkaudbg.sh
+    class late_start
+    user root
+    group root
+    oneshot
+    disabled
+
+service asus_audbg /vendor/bin/sh /system/etc/init.asus.audbg.sh
+    class late_start
+    user root
+    group root
+    oneshot
+    disabled
+
+on property:sys.boot_completed=1
+    start asus_checkaudbg
+
+on property:persist.asus.audbg=*
+    start asus_audbg

@@ -1,0 +1,28 @@
+# 必須放在 plat（系統側）政策的規則。
+#
+# 判準只有一個：**規則裡出現了 private 型別**。
+# Treble 把政策切成 public / private / vendor 三塊分別編譯：
+#   - vendor 的 .te 看不到 private 定義的型別
+#   - private 的 .te 看不到 vendor 定義的型別
+# 放錯邊會得到 `ERROR 'unknown type xxx'`。
+#
+# ⚠ 判斷方法：**直接看型別宣告在哪個目錄**，不要用別的啟發式。
+#    用 tools/48_sepolicy_side.sh <型別名>。
+#    我一度改用「有沒有出現在 plat_pub_policy.cil」來判斷，結果那只能分出
+#    「public」與「其他」，把 vendor 型別誤判成 private，一口氣搬錯了五條
+#    （time_data_file、location_data_file、vendor_radio_data_file、
+#      proc_dirty_ratio、sensors_test_exec 其實都在
+#      device/qcom/sepolicy/vendor/ 底下）。
+#
+# ※ 本機 PRODUCT_SEPOLICY_SPLIT=false，執行期載入的是單體的 root/sepolicy，
+#   這個切割對我們只是建置期的檢查。但檢查不過就編不出來，所以照規則放。
+
+# /data/vendor/dpm 的 chown/chmod（init.qcom.rc 做的）
+# dpmd_data_file 宣告在 device/qcom/sepolicy/private/file.te:32
+# （vendor/common/file.te 裡那份是被註解掉的）
+allow vendor_init dpmd_data_file:dir { search setattr };
+
+# --- 第四批 ---
+# /data/vendor/qvr 的 chown/chmod
+# qvrd_data_file 宣告在 device/qcom/sepolicy/private/file.te
+allow vendor_init qvrd_data_file:dir { search setattr };

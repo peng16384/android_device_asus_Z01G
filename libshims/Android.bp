@@ -1,0 +1,25 @@
+//
+// Z01G 的 shim 函式庫。
+//
+// 由 BoardConfig.mk 的 TARGET_LD_SHIM_LIBS 掛到指定的函式庫上，
+// 不需要（也不能）被任何東西明確連結 —— 是 linker 在載入目標函式庫時
+// 順便載進同一個查找群組的。
+//
+
+cc_library_shared {
+    name: "libshim_keymaster",
+    srcs: ["keymaster_compat.cpp"],
+
+    // 轉發的目標符號在這裡面
+    shared_libs: ["libkeymaster_messages"],
+
+    // 指紋那條鏈 64 位元（gxFpDaemon、fingerprint.gx52*.so）與
+    // 32 位元（vendor/lib/libfp_client.so 等）都有，兩種都要
+    compile_multilib: "both",
+
+    // 我們是刻意用舊的 mangled name 當函式名稱，關掉相關警告
+    cflags: [
+        "-Wno-reserved-id-macro",
+        "-Wno-unused-parameter",
+    ],
+}

@@ -1,0 +1,39 @@
+# sar_setting —— 依螢幕／通話／資料／Wi-Fi AP 狀態調整射頻發射功率（SAR）
+#
+# init.qcom.rc 裡有一整組觸發：
+#     on property:sys.asus.sar.audio=*     restart sar_setting
+#     on property:sys.asus.sar.data=*      restart sar_setting
+#     on property:sys.asus.sar.lte0=* / lte1=* / display=*
+#     on property:wlan.softap.driver.status=*
+#     service sar_setting /system/vendor/bin/sar_setting   class core
+#
+# 之前沒有 exec type，跑在 init 網域。
+
+type sar_setting, domain;
+type sar_setting_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(sar_setting)
+
+# 讀子系統名稱與狀態（/sys/devices/soc/.../subsysN/name）
+allow sar_setting sysfs_data:file r_file_perms;
+
+# 螢幕狀態：/sys/class/graphics/fb0/... ——`class` 底下那一層是 symlink
+allow sar_setting sysfs_graphics:file r_file_perms;
+allow sar_setting sysfs_graphics:lnk_file r_file_perms;
+
+get_prop(sar_setting, asus_display_sar_prop)
+
+# --- 第三批 ---------------------------------------------------------------
+# 它讀 wlan.* 判斷 Wi-Fi AP 是否開著（softap 開著要降發射功率）
+get_prop(sar_setting, wifi_prop)
+
+# 自己開一個 socket 下 ioctl 0xc304。
+#
+# ⚠ 不能只寫 `allow sar_setting self:socket ioctl` —— domain.te:291 有
+#       neverallowxperm domain domain:socket_class_set ioctl { 0 };
+#   裸的 allow 等於「所有 ioctl 都放行」，包含被禁的 0，編譯期就會擋。
+#   必須用 allowxperm 指名具體的 ioctl 號碼（號碼取自 AVC 的 ioctlcmd= 欄位）。
+allow sar_setting self:socket { create read write ioctl };
+allowxperm sar_setting self:socket ioctl { 0xc302 0xc304 };
+# ⚠ 第三批只放了 0xc304，第四輪又冒出 0xc302 —— allowxperm 是白名單，
+#   一次只會放行列出來的那幾個，所以這種「同一支程式用好幾個 ioctl」
+#   的情況必然要跑好幾輪才收得齊。

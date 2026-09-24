@@ -1,0 +1,47 @@
+# Android fstab file — ASUS ZenFone 4 Pro (ZS551KL / Z01G)
+# 這一份安裝到 /vendor/etc/fstab.qcom，給 ASUS init.target.rc 的
+#   on fs
+#       mount_all /vendor/etc/fstab.qcom
+# 使用，負責掛載 /data /cache /persist /firmware /bt_firmware /dsp。
+#
+# ############################################################################
+# 這份「刻意沒有 /system 條目」—— 原廠的 vendor fstab 也沒有。
+#
+# /system 是 Android 9 的 first-stage init 用 ramdisk 根目錄的 /fstab.qcom
+# 掛載的，等到 on fs 執行 mount_all 時它早就掛好了。
+# 如果這裡再放一個 /system 條目，fs_mgr 會對一個已掛載的分割區跑 e2fsck：
+#   e2fsck: Warning!  /dev/block/bootdevice/by-name/system is mounted.
+#   e2fsck: Operation not permitted while trying to open .../system
+#   e2fsck: e2fsck terminated by exit(8)
+#   init: fs_mgr_mount_all returned an error
+# 而 mount_all 只要整體回傳失敗，init 的 queue_fs_event() 就不會送出
+# nonencrypted 事件：
+#   init: Command 'mount_all /vendor/etc/fstab.qcom' ... failed:
+#         queue_fs_event() failed: Invalid code: 255
+# 沒有 nonencrypted 就沒有 class_start main，**zygote 永遠不會啟動**。
+#
+# 症狀：卡在開機 logo、USB 完全不列舉、沒有任何 tombstone/ANR、
+#       dalvik-cache 是空的 —— 因為根本沒有程序崩潰，是壓根沒被啟動。
+#
+# 另一份（ramdisk 根目錄的 /fstab.qcom）則「必須」有 /system，
+# 否則 first-stage init 掛不了 /system，init 會在更早的地方就死掉。
+# 兩份用途不同，不要合併。
+# ############################################################################
+#
+# 分割區對應（來自 /dev/block/bootdevice/by-name/）：
+#   userdata sda20 / cache sda18 / persist sda2
+#   modem sde5 / bluetooth sde6 / dsp sda12 / misc sda3
+#
+#<src>                                  <mnt_point>      <type>  <mnt_flags and options>                         <fs_mgr_flags>
+/dev/block/bootdevice/by-name/userdata  /data            ext4    noatime,nosuid,nodev,barrier=1,noauto_da_alloc,discard  wait,check,encryptable=footer,quota
+/dev/block/bootdevice/by-name/cache     /cache           ext4    noatime,nosuid,nodev,barrier=1                  wait,check
+/dev/block/bootdevice/by-name/persist   /persist         ext4    noatime,nosuid,nodev,barrier=1                  wait
+/dev/block/bootdevice/by-name/modem     /firmware        vfat    ro,shortname=lower,uid=1000,gid=1000,dmask=226,fmask=333,context=u:object_r:firmware_file:s0   wait
+/dev/block/bootdevice/by-name/bluetooth /bt_firmware     vfat    ro,shortname=lower,uid=1002,gid=3002,dmask=227,fmask=337,context=u:object_r:bt_firmware_file:s0 wait
+/dev/block/bootdevice/by-name/dsp       /dsp             ext4    ro,nosuid,nodev,barrier=1                       wait
+/dev/block/bootdevice/by-name/misc      /misc            emmc    defaults                                        defaults
+/dev/block/zram0                        none             swap    defaults                                        zramsize=536870912
+
+# 可移除裝置
+/devices/soc/c0a4900.sdhci/mmc_host*                       /storage/sdcard1  vfat  nosuid,nodev  wait,voldmanaged=sdcard1:auto
+/devices/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto*   /storage/usbotg   vfat  nosuid,nodev  wait,voldmanaged=usbotg:auto

@@ -1,0 +1,88 @@
+# 本機特有的檔案標記。
+#
+# 路徑寫成 /(vendor|system/vendor)/... 兩種都涵蓋：本機是非 Treble，
+# TARGET_COPY_OUT_VENDOR := system/vendor，實際檔案在 /system/vendor/...，
+# 但執行期 /vendor 是指向它的 symlink。比照 device/qcom/sepolicy 的寫法。
+
+# /dev/goodix_fp —— Goodix 指紋辨識器
+# 沒標記的話會落在通用的 `device` type 上（實測有 ioctl denial）。
+/dev/goodix_fp                  u:object_r:goodix_fp_device:s0
+
+# /dev/asusRgbSensor —— ASUS RGB／色溫感測器
+/dev/asusRgbSensor              u:object_r:asus_rgb_sensor_device:s0
+
+###########################################################################
+# 執行檔 —— 這一批的重點
+#
+# 沒有 exec type 的 vendor 執行檔會落在通用的 `vendor_file` 上，init 直接
+# 執行它時不會發生網域轉換，於是那支 daemon 整個跑在 **init 網域**裡：
+#
+#     avc: denied { execute_no_trans } for
+#          path="/system/vendor/bin/sar_setting" scontext=u:r:init:s0
+#          tcontext=u:object_r:vendor_file:s0
+#
+# 而 system/sepolicy/public/init.te:518 的 neverallow 明文禁止這件事
+# —— 所以第一批裡那句 `allow init vendor_file:file execute_no_trans`
+# 編譯期就被擋下來了。**正解不是放寬 init，是給每支 daemon 自己的網域。**
+#
+# 實測（`cat /proc/$(pidof gxFpDaemon)/attr/current` = `u:r:init:s0`）
+# 確認了這個推論。
+###########################################################################
+
+# Goodix 指紋：fpseek 先偵測型號寫 ro.hardware.fingerprint，
+# fpservice.sh 再依值 start gx_fpd（gxFpDaemon 才是真的跟感測器對話那支）
+/(vendor|system/vendor)/bin/gxFpDaemon         u:object_r:gx_fpd_exec:s0
+/(vendor|system/vendor)/bin/fpseek             u:object_r:fpseek_exec:s0
+
+# SAR：依螢幕/通話/資料狀態調整射頻功率（init.qcom.rc 的一堆
+# `on property:sys.asus.sar.* restart sar_setting`）
+/(vendor|system/vendor)/bin/sar_setting        u:object_r:sar_setting_exec:s0
+
+# 依國家碼設定 modem（init.qcom.rc 的 service modem-check，走 /dev/smd7）
+# ⚠ 它的標記與網域在 sepolicy/private/，不在這裡 —— smd7_device 是
+#   qcom 在 private/ 定義的型別，vendor 側看不到。見 private/modem_country.te。
+
+# Widevine DRM
+# qcom 的 file_contexts 只標了 @1.1（新版 Treble 裝置用的），
+# 我們的 blob 是 Oreo 的 **@1.0**，正規表示式對不上 → 落到 vendor_file。
+# hal_drm_widevine 這個網域在 device/qcom/sepolicy 裡已經存在，直接沿用。
+/(vendor|system/vendor)/bin/hw/android\.hardware\.drm@1\.0-service\.widevine   u:object_r:hal_drm_widevine_exec:s0
+
+# --- 第三批 ---
+# Rockchip RK1608 前置 ISP
+/dev/rk_preisp                  u:object_r:asus_preisp_device:s0
+
+# init.qcom.crashdata.sh —— qcom 的 file_contexts 標了十幾支 init.*.sh，
+# 唯獨漏了這支，於是它落在 vendor_file、跑在 init 網域，然後去執行
+# toybox_vendor 就撞上 neverallow：
+#     avc: denied { execute_no_trans } comm="init.qcom.crash"
+#          path="/system/vendor/bin/toybox_vendor" scontext=u:r:init:s0
+# 標成 qti_init_shell_exec 就會走 qcom 既有的 domain_auto_trans，
+# 而 qti_init_shell 本來就有 `allow qti_init_shell vendor_toolbox_exec:file rx_file_perms`。
+/(vendor|system/vendor)/bin/init\.qcom\.crashdata\.sh   u:object_r:qti_init_shell_exec:s0
+
+# --- 第四批 ---
+# 前鏡頭的 RGB／色溫感測器（與 /dev/asusRgbSensor 同一顆驅動的另一個節點）
+/dev/asusFRGBSensor             u:object_r:asus_rgb_sensor_device:s0
+/data/misc/dts(/.*)?            u:object_r:dts_data_file:s0
+
+# --- 第五批 ---
+/dev/LaserSensor                u:object_r:asus_laser_device:s0
+
+# --- 第七批 ---
+# /data/connectivity —— Qualcomm Connectivity Engine 的資料庫（bqe_hist.db）
+#
+# qcom 的 file_contexts 標的是 Treble 路徑 `/data/vendor/connectivity`，
+# 我們的 blob 是 Oreo 編的，用的還是**沒有 vendor 前綴**的舊路徑，
+# 所以落在通用的 system_data_file 上。這跟第一批那些屬性
+# （sys.listeners.registered vs vendor.sys.listeners.registered）是同一個模式。
+#
+# ⚠ 不能直接沿用 qcom 的 cnd_data_file。它是為 `/data/vendor/connectivity`
+#   宣告的，沒有 core_data_file_type —— `/data/vendor/` 底下不受那條檢查，
+#   但我們要標的 `/data/connectivity` 就在 `/data/` 底下，sepolicy_tests 會擋：
+#       The following types on /data/ must be associated with the
+#       "core_data_file_type" attribute: cnd_data_file
+#   用 typeattribute 去改 qcom 的型別也不對（那是在改別人的語意），
+#   所以另外宣告一個，規則照抄 qcom cnd.te 的三條。
+/data/connectivity(/.*)?        u:object_r:legacy_cnd_data_file:s0
+/data/misc/qvop(/.*)?           u:object_r:qvop_data_file:s0

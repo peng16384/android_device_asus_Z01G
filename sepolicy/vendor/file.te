@@ -1,0 +1,74 @@
+# 本機特有的檔案 type。
+#
+# 只宣告 AOSP 與 device/qcom/sepolicy 都沒有的。
+# （sysfs_batteryinfo 已由 AOSP 定義，直接沿用；
+#   qcom 有 sysfs_kgsl_proc 但那是 /sys/devices/virtual/kgsl，
+#   我們要的是 debugfs 上的 /sys/kernel/debug/kgsl，是不同的檔案系統。）
+
+# /proc/asusevtlog —— ASUS 的事件記錄節點
+type proc_asusevtlog, fs_type, proc_type;
+
+# /proc/driver/ois_device —— 相機 OIS（光學防手震）控制節點
+type proc_ois_device, fs_type, proc_type;
+
+# /proc/driver/audio_debug、audio_codec_status
+# 耳機孔的 UART/音訊切換，見 system.prop 的 persist.asus.audbg
+type proc_audio_debug, fs_type, proc_type;
+
+# /sys/kernel/debug/kgsl —— memtrack HAL 讀每行程的 GPU 記憶體用量
+type debugfs_kgsl, fs_type, debugfs_type;
+
+# /proc/driver/FrontModule、/proc/driver/dualcam_cali
+# 前鏡頭模組識別與雙鏡頭校正資料，camera provider 開機時會讀。
+# 實測落在通用的 `proc` type。
+type proc_asus_camera, fs_type, proc_type;
+
+# /asusfw —— ASUS 的校正資料分割（sda17, 64 MB ext4）
+#
+# 那顆 ext4 裡沒有任何 security.selinux xattr（ASUS 從沒用 SELinux 標過它），
+# 所以必須用 mount 的 context= 整個蓋掉，否則全部是 `unlabeled`。
+# 和 /firmware、/bt_firmware 同樣是 contextmount_type。
+#
+# 內容：audio/acdbdata/、audio/mixer_paths_ZS551KL*.xml、
+#       audio/audio_amp_fw/tas2557s_uCDSP*.bin、ois/OIS_programFW.bin、wifi/
+# ⚠ 是 fs_type 不是 file_type。
+#   寫成 file_type 的話，AOSP 給 init / vendor_init 的萬用檔案規則
+#   （init.te、vendor_init.te 對 file_type 的 create/setattr/relabel…）
+#   會自動套到它身上，然後整組撞上 domain.te:511 的
+#       neverallow * contextmount_type:dir_file_class_set { create ... };
+#   實測一次噴 14 條 neverallow 失敗。
+#   AOSP 自己的範例就是 `type oemfs, fs_type, contextmount_type;`，
+#   而 vendor_init.te:104/114 正是用 `-contextmount_type` 把這類型別
+#   排除在萬用規則之外。
+type asusfw_file, fs_type, contextmount_type;
+
+# /data/misc/dts —— DTS Eagle 音訊後處理的播放狀態檔
+# 原本落在通用的 system_data_file，而 domain.te:1181 不讓 vendor_init 寫它。
+#
+# ⚠ core_data_file_type 不能漏。/data/ 底下的型別都必須帶它，否則
+#   sepolicy_tests 會擋：
+#       The following types on /data/ must be associated with the
+#       "core_data_file_type" attribute: dts_data_file
+#   這個檢查 **`m sepolicy` 不會跑**（那只編 policy 本身），
+#   要 `m sepolicy_tests` 或完整編譯才會發現 —— 白跑了一次完整編譯才看到。
+#   qcom 自己的 /data 型別（time_data_file 等）也都是這樣宣告的。
+type dts_data_file, file_type, data_file_type, core_data_file_type;
+
+# /sys/kernel/boot_wlan/boot_wlan —— WLAN 上電節點（wifi@1.0-service 寫它）
+type sysfs_wlan_boot, fs_type, sysfs_type;
+
+# /sys/kernel/debug/rmt_storage/rmts —— 遠端儲存（modem 的 EFS 走這裡）
+type debugfs_rmt_storage, fs_type, debugfs_type;
+
+# /data/connectivity —— Qualcomm Connectivity Engine 的資料庫（bqe_hist.db）
+# Oreo 時期的路徑；qcom 現在只認得 /data/vendor/connectivity（cnd_data_file）。
+type legacy_cnd_data_file, file_type, data_file_type, core_data_file_type;
+
+# /proc/fpmod —— fpseek 讀它判斷是哪一顆 Goodix
+# kernel: drivers/sensors/fingerprint/fphandle.c:1609
+#         proc_create("fpmod", 0444, NULL, &proc_fops)
+type proc_asus_fingerprint, fs_type, proc_type;
+
+# /data/misc/qvop —— qvop-daemon 的 log（QVOP = Qualcomm Voice Over Package?）
+# 原本落在通用的 system_data_file，而 domain.te:1181 不讓非 core 網域寫它。
+type qvop_data_file, file_type, data_file_type, core_data_file_type;

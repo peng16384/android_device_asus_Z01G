@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     framework 資源覆蓋（DEVICE_PACKAGE_OVERLAYS，見 device.mk）
+
+     這個檔案在 2026-09-23 之前是不存在的（overlay/ 整個是空的），
+     修耳機孔時才建立。
+-->
+<resources>
+
+    <!--
+        有線耳機的偵測路徑。
+
+        Android 有兩條：
+          (a) 舊的 switch class：/sys/class/switch/h2w/state，由
+              WiredAccessoryManager 的 UEventObserver 監看
+          (b) input 事件：codec 的 MBHC 透過 snd_jack 送出
+              SW_HEADPHONE_INSERT / SW_MICROPHONE_INSERT / SW_JACK_PHYSICAL_INSERT
+
+        這台走 (b)（/sys/class/switch/ 底下根本沒有 h2w），但
+        InputManagerService.notifySwitch() 是這樣寫的：
+
+            if (mUseDevInputEventForAudioJack && (switchMask & SW_JACK_BITS) != 0) {
+                mWiredAccessoryCallbacks.notifyWiredAccessoryChanged(...);
+            }
+
+        而 mUseDevInputEventForAudioJack 就是這個資源，**AOSP 預設是 false**。
+        沒設的話症狀是：kernel 一路正常（MBHC 量到阻抗、snd_jack 有回報、
+        `dumpsys input` 的 SwitchValues 從 0 變成 0x94），但 AudioService
+        完全不知情 —— dumpsys audio 的「wired/A2DP device connection」
+        事件紀錄是空的，音訊繼續走喇叭。
+
+        參考：xiaomi_common 與 oneplus_common 的 msm8998 device tree 也都設 true。
+    -->
+    <bool name="config_useDevInputEventForAudioJack">true</bool>
+
+    <!--
+        螢幕導覽列：**維持 AOSP 預設的 false**（不佔螢幕空間）。
+
+        這裡刻意不設成 true。原因是實體 Home 鍵已經修好了 ——
+        見 system.prop 的 persist.sys.fp.navigation，那才是真正的問題
+        （ASUS 用屬性閘控 gxFpDaemon 的送鍵功能，不是硬體壞掉）。
+
+        PhoneWindowManager 只看這兩個東西決定要不要畫導覽列：
+            mHasNavigationBar = res.getBoolean(config_showNavigationBar);   // AOSP 預設 false
+            String o = SystemProperties.get("qemu.hw.mainkeys");
+            if ("1".equals(o)) mHasNavigationBar = false;
+            else if ("0".equals(o)) mHasNavigationBar = true;
+        而 LineageOS 另外會 OR 上 LineageSettings.Secure.DEV_FORCE_SHOW_NAVBAR
+        （設定 -> 系統 -> 按鍵 的「螢幕上的導覽列」開關）。
+
+        所以這裡留 false，使用者要的話可以自己在設定裡打開 ——
+        前提是下面的 config_deviceHardwareKeys 有正確宣告，
+        否則那個開關根本不會出現（實測踩過）。
+
+        ※ 原廠 build.prop 其實有 `qemu.hw.mainkeys=0`（強制開啟導覽列），
+        　 但那是 ASUS 的選擇，我們刻意不跟進。
+    -->
+    <!-- <bool name="config_showNavigationBar">true</bool> -->
+
+    <!--
+        （2026-09-23 的一段彎路，留著當記錄）
+        在查出 persist.sys.fp.navigation 之前，一度把上面那條設成 true 當作
+        Home 鍵壞掉的替代方案。當時發現一個更基本的問題：因為下面的
+        config_deviceHardwareKeys 是 0，LineageOS 的「按鍵」設定頁只剩
+        電源鍵與音量鍵兩節 —— 連開啟導覽列的開關都找不到，
+        等於既沒有實體 Home、也沒有螢幕 Home。
+    -->
+
+    <!--
+        這台實際有的實體按鍵（LineageOS 的 bitmask）。
+
+            KEY_MASK_HOME       0x01   指紋辨識器（壞，但硬體確實存在）
+            KEY_MASK_BACK       0x02   ✓ 可用
+            KEY_MASK_MENU       0x04   無
+            KEY_MASK_ASSIST     0x08   無
+            KEY_MASK_APP_SWITCH 0x10   ✓ 可用
+            KEY_MASK_CAMERA     0x20   無
+            KEY_MASK_VOLUME     0x40   ✓ 可用
+        -> 0x01 | 0x02 | 0x10 | 0x40 = 0x53 = 83
+
+        LineageOS 的 ButtonSettings 用這個值決定要顯示哪些設定項；
+        設 0（預設）會讓整個按鍵自訂與導覽列開關都消失。
+    -->
+    <integer name="config_deviceHardwareKeys">83</integer>
+
+    <!--
+        VoLTE：告訴 ImsResolver 去哪裡找 ImsService。
+
+        台灣 3G 已關台，CS 掛在 LTE 上 -> 語音只剩 VoLTE。
+        vendor 那一側本來就是好的（imsqmidaemon / imsdatadaemon 都 running），
+        缺的是 Android 側的 ImsService —— 沒有它就是
+            E ImsManager: Connector: Retrying getting ImsService...
+            Telecom: setCallState DIALING -> DISCONNECTED
+        撥號畫面會停在「撥號中」，32 秒後自己掛掉。
+
+        兩個都要設，缺一個都沒用：
+
+        config_ims_package —— AOSP 預設是**空字串**
+        （frameworks/base/core/res/res/values/config.xml:2781），
+        所以就算 apk 裝進去了也不會被採用。
+
+        config_dynamic_bind_ims —— AOSP 預設 false，而 false 走的是
+        ImsResolver.getStaticImsService() -> ImsServiceControllerStaticCompat，
+        它綁的是 **ServiceManager 裡叫 "ims" 的舊式 IImsService**
+        （8.0 之前的機制）。我們這顆是 8.0 的 ImsService（用 intent action
+        宣告的 Service），靜態路徑找不到它。
+        改成 true 之後 ImsResolver 會按 action 搜尋，同時搜新版與 compat 版
+        （ImsResolver:280 與 :303），我們那顆的 action 已經改成 compat 版。
+
+        apk 的來源與改法見 tools/101_build_ims_apk.sh。
+    -->
+    <string name="config_ims_package" translatable="false">org.codeaurora.ims</string>
+    <bool name="config_dynamic_bind_ims">true</bool>
+
+</resources>

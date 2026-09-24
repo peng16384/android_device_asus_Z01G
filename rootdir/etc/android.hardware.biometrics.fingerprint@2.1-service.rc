@@ -1,0 +1,71 @@
+# 指紋 HAL —— 改自原廠 /vendor/etc/init/android.hardware.biometrics.fingerprint@2.1-service.rc
+#
+# 原廠那份長這樣（一字不差）：
+#     service fps_hal /vendor/bin/hw/android.hardware.biometrics.fingerprint@2.1-service
+#         class late_start
+#         user system
+#         group system input
+#         disabled
+#
+# 問題：`disabled` 表示要別人明確去 start 它，但原廠**所有** rc 裡
+# 再也沒有第二處提到 fps_hal，也沒有任何 `interface` 宣告
+# （`interface` 這個 init 關鍵字是 Android 8.1 才加的，ASUS 停在 8.0）。
+# 所以在我們的 Pie 上它永遠不會被啟動：
+#     init: Received control message 'interface_start' for
+#           'android.hardware.biometrics.fingerprint@2.1::IBiometricsFingerprint/default'
+#     init: Could not find service hosting interface ...   （每次 getService 都印一次）
+#
+# 實際影響不只是指紋 —— **Home 鍵也不會動**。
+# 這台的 Home 鍵就是指紋辨識器（goodixfp），而 goodix 的驅動要等
+# 指紋 daemon 透過 ioctl 把它切到按鍵模式才會回報 KEY_HOME。
+# 實測 getevent：按 Home 完全沒有任何 input event，
+# 而同樣在 focal-touchscreen 上的 BACK 與 APP_SWITCH 都正常。
+#
+# 改動：補上 interface 宣告 —— init 才知道誰提供這個介面，
+# hwservicemanager 送 interface_start 時才找得到人。`disabled` 保留。
+#
+# ### 為什麼一定要保留 disabled（踩過）###
+# 我一度把 disabled 拿掉，想讓它在 late_start 直接起來。結果它比 gx_fpd
+# 早啟動（實測 fps_hal pid 1036 vs gx_fpd pid 1275），而
+# fingerprint.gx5206.so 連不上 daemon 之後**不會重試**，於是永遠是
+#     FingerprintService: Fingerprint HAL id: 0
+#     FingerprintService: Failed to open Fingerprint HAL!
+# 而 gxFpDaemon 那邊則是
+#     FingerGoodix: [notifyClient] client is null
+#
+# 用 adb `setprop ctl.restart fps_hal`（此時 gx_fpd 已在跑）驗證過：
+# 重啟後立刻看到跨行程呼叫
+#     3472 [gx_delFpTemplates] finger print client call gx_delFpTemplates!
+#     1275 [delFpTemplates   ] Client::delFpTemplates,count:5
+# 接著框架也拿到了 → Fingerprint HAL id: 493798224512（不再是 0）。
+#
+# 保留 disabled + interface 宣告之後的順序是：
+#   ~12s  fpseek（late_start, oneshot）偵測感測器 -> setprop ro.hardware.fingerprint
+#   ~13s  on property:ro.hardware.fingerprint=* -> start fpservice -> start gx_fpd
+#   ~40s  system_server 的 FingerprintService 第一次 getService
+#         -> hwservicemanager 送 interface_start -> init 這時才啟動 fps_hal
+# gx_fpd 早就就緒，不會再有競態。
+#
+# 所以**不要**在 init.z01g.rc 的 on property 區塊裡加 `start fps_hal` ——
+# 那會讓它跟 fpservice 幾乎同時啟動，又變回競態
+#（原廠 init.asus.rc 是那樣寫的，但原廠的 fingerprint HAL 走的是別的路徑）。
+#
+# 先確認過這條鏈連得起來（tools/61_fps_probe.sh）：
+#   android.hardware.biometrics.fingerprint@2.1-service  48 個符號，缺 0
+#   fingerprint.gx5206.so / gx5216.so                    88 個符號，缺 0
+#   gxfingerprint.default.so                             67 個符號，缺 0
+#
+# 刻意**不**把它加進 manifest.xml：非 Treble 下只要 manifest 有宣告，
+# getTransport() 就回 HWBINDER，服務萬一起不來客戶端會無限等
+# （GNSS 就是這樣把 system_server 卡死、被 Watchdog 砍掉的）。
+# 服務已經註冊好的話，legacy 路徑那一次 hwbinder 嘗試就找得到。
+
+service fps_hal /vendor/bin/hw/android.hardware.biometrics.fingerprint@2.1-service
+    # "class hal" causes a race condition on some devices due to files created
+    # in /data. As a workaround, postpone startup until later in boot once
+    # /data is mounted.
+    class late_start
+    user system
+    group system input
+    interface android.hardware.biometrics.fingerprint@2.1::IBiometricsFingerprint default
+    disabled

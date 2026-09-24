@@ -1,0 +1,57 @@
+# procfs / sysfs / debugfs 上的節點標記。
+#
+# 這些檔案系統不支援 xattr，所以不能用 file_contexts，只能靠 genfs_contexts
+# 按路徑前綴標記。沒標記的話會落在 proc / sysfs / debugfs 這種通用 type 上，
+# 而「allow 整個 sysfs」等於開放所有 sysfs 節點 —— 範圍太大，
+# 所以這裡逐一標記成語意明確的 type。
+#
+# 路徑全部來自 permissive 模式收集到的實際 AVC denial。
+
+# --- /proc ---------------------------------------------------------------
+# ASUS 的事件記錄節點。rild、wpa_supplicant 等多個 ASUS/QTI 行程都會寫，
+# 用來留下開關機、充電、通話等事件。
+genfscon proc /asusevtlog                       u:object_r:proc_asusevtlog:s0
+# 相機 OIS（光學防手震）的控制節點，camera provider 會開它
+genfscon proc /driver/ois_device                u:object_r:proc_ois_device:s0
+# 耳機孔 UART/音訊切換（見 system.prop 的 persist.asus.audbg）
+genfscon proc /driver/audio_debug               u:object_r:proc_audio_debug:s0
+genfscon proc /driver/audio_codec_status        u:object_r:proc_audio_debug:s0
+
+# --- /sys ----------------------------------------------------------------
+# 電池與充電器。AOSP 只標記了 /sys/class/power_supply，
+# 但 healthd 與 hvdcp 走的是 /sys/devices/... 的實體路徑，那裡沒被標記。
+genfscon sysfs /devices/soc/800f000.qcom,spmi/spmi-0/spmi0-02/800f000.qcom,spmi:qcom,pmi8998@2:qcom,qpnp-smb2/power_supply   u:object_r:sysfs_batteryinfo:s0
+genfscon sysfs /devices/soc/c1b6000.i2c/i2c-8/8-0008/c1b6000.i2c:qcom,smb138x@8:qcom,smb138x-parallel-slave@1000/power_supply u:object_r:sysfs_batteryinfo:s0
+
+# --- debugfs -------------------------------------------------------------
+# memtrack HAL 讀 GPU 的每行程記憶體用量：/sys/kernel/debug/kgsl/proc/<pid>/mem
+genfscon debugfs /kgsl                          u:object_r:debugfs_kgsl:s0
+
+# --- 第二批：相機 ---
+# camera provider 讀這兩個判斷前鏡頭模組與雙鏡頭校正
+genfscon proc /driver/FrontModule               u:object_r:proc_asus_camera:s0
+genfscon proc /driver/dualcam_cali              u:object_r:proc_asus_camera:s0
+
+# --- 第三批 ---
+# 後鏡頭模組的 OTP 資料（camera provider 讀來對校正值）
+genfscon proc /driver/rear_otp                  u:object_r:proc_asus_camera:s0
+
+# --- 第四批 ---
+# 後鏡頭模組識別（與 FrontModule 成對）
+genfscon proc /driver/RearModule                u:object_r:proc_asus_camera:s0
+
+# --- 第五批 ---
+genfscon proc /driver/front_otp                 u:object_r:proc_asus_camera:s0
+genfscon sysfs /kernel/boot_wlan                u:object_r:sysfs_wlan_boot:s0
+genfscon debugfs /rmt_storage                   u:object_r:debugfs_rmt_storage:s0
+
+# --- 第六批 ---
+# 望遠鏡頭（imx351）的 OTP —— 三顆鏡頭各一個節點
+genfscon proc /driver/rear2_otp                 u:object_r:proc_asus_camera:s0
+
+# --- 第八批 ---
+# 雷射對焦的狀態節點（相機 HAL 的 CAM_AF 執行緒讀它）
+genfscon proc /driver/LaserFocus_Status_For_Camera  u:object_r:proc_asus_camera:s0
+
+# --- 第十一批 ---
+genfscon proc /fpmod                            u:object_r:proc_asus_fingerprint:s0

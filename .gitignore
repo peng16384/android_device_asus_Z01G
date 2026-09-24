@@ -1,0 +1,13 @@
+# 從原廠映像重建出來的產物，不進 git
+# 重建：見 docs/building.md
+prebuilt/ims/
+
+# 編譯產物
+out/
+*.img
+*.zip
+*.tar.gz
+
+# 編輯器
+*.swp
+.DS_Store

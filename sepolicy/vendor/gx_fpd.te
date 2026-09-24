@@ -1,0 +1,98 @@
+# gxFpDaemon —— Goodix 指紋的閉源 daemon
+#
+# init.z01g.rc：
+#     service gx_fpd /vendor/bin/gxFpDaemon    user system  group system
+#
+# 它負責跟感測器對話、做比對，並在辨識成功時注入 KEY_HOME
+# （＝指紋辨識器當 Home 鍵那個功能，靠 persist.sys.fp.navigation=2 開啟）。
+# fps_hal（hal_fingerprint_default）透過 vndbinder 跟它溝通。
+#
+# 在有 exec type 之前它整個跑在 init 網域裡（實測
+# `cat /proc/$(pidof gxFpDaemon)/attr/current` = `u:r:init:s0`）。
+# 第一批那些 scontext=init 的指紋相關規則，正確歸屬是這裡。
+
+type gx_fpd, domain;
+type gx_fpd_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(gx_fpd)
+
+# 感測器本體
+allow gx_fpd goodix_fp_device:chr_file rw_file_perms;
+
+# /dev/qseecom —— 指紋比對的 TA 跑在 TrustZone，要透過 QSEE 載入
+allow gx_fpd tee_device:chr_file rw_file_perms;
+
+# 跟 fps_hal 之間的 vndbinder
+# vndbinder_use() 同時給 vndbinder_device 的存取、對 vndservicemanager 的
+# binder call/transfer，以及 vndservicemanager 反過來讀
+# /proc/<pid>/attr/current 的權限（那幾條 denial 會一併解決）。
+vndbinder_use(gx_fpd)
+binder_call(gx_fpd, hal_fingerprint_default)
+binder_call(hal_fingerprint_default, gx_fpd)
+
+# 註冊 goodix.fp（名稱取自 AVC 原文的 service= 欄位，見 vndservice.te）
+add_service(gx_fpd, gx_fpd_vndservice)
+allow hal_fingerprint_default gx_fpd_vndservice:service_manager find;
+
+# 它會去找 vendor.qti.hardware.perf::IPerf（辨識時拉高 CPU 頻率，
+# 避免解鎖有延遲感）：
+#     avc: denied { find } for interface=vendor.qti.hardware.perf::IPerf
+#          pid=1292 scontext=u:r:init:s0
+hal_client_domain(gx_fpd, hal_perf)
+
+# 指紋範本：/data/system/users/*/fpdata
+allow gx_fpd fingerprintd_data_file:dir rw_dir_perms;
+allow gx_fpd fingerprintd_data_file:file create_file_perms;
+
+# 內部用的 socketpair
+allow gx_fpd self:socket { create read write };
+
+
+# fpseek —— 開機時偵測是哪一顆 Goodix（gx5206 / gx5216），
+# 把結果寫進 ro.hardware.fingerprint，fpservice.sh 再據此決定要不要 start gx_fpd。
+# oneshot，跑完就結束。
+type fpseek, domain;
+type fpseek_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(fpseek)
+
+allow fpseek goodix_fp_device:chr_file rw_file_perms;
+set_prop(fpseek, asus_fp_hw_prop)
+
+# /dev/ion —— 載 trustlet 時 libQSEEComAPI 要用 ION 配共享緩衝區。
+#
+# 這一條是用「把 fpseek 網域暫時設成 permissive」找出來的：
+#     permissive fpseek;        <- 只影響這一個網域，其餘仍 enforcing
+# 它會**成功執行**並把碰到的每一條以 permissive=1 記進 audit，
+# 一次就拿到完整清單（結果只缺這一個）。
+#
+# ⚠ 為什麼非得這樣做：enforcing 下 fpseek 被擋時**完全沒有 AVC**，
+#   exit code 還是 0，唯一的症狀是 ro.hardware.fingerprint 沒設上。
+#   「沒有 denial」不代表「沒有被擋」—— 這已經是這個專案裡的第三種變形
+#   （前兩種：AOSP 的 dontaudit 蓋掉 wifi_data_file:dir search、
+#     開機早期被 audit 限速丟掉）。
+#
+# 對照法：手動以 root（unconfined）跑同一支執行檔會成功 ->
+#         問題一定在它自己的網域，而不是執行檔或硬體。
+allow fpseek ion_device:chr_file rw_file_perms;
+
+# trustlet 本體：/system/vendor/etc/firmware/fpseekta.{mdt,b00..b07}
+# 照 qcom 給每個 QSEE 客戶端的模式（fidodaemon.te、hal_soter_qti.te）。
+#
+# ⚠ 這兩條當初是**猜的，而且猜錯了** —— 加完之後 trustlet 一樣載不起來。
+#   真正的原因是 DAC（服務的 user/group 設錯），見 z01g.te 裡那段長註解。
+#   留著是因為與 qcom 的慣例一致，而且無害；但要記得：
+#   **它們不是當時那個問題的解。**
+r_dir_file(fpseek, vendor_configs_file)
+r_dir_file(fpseek, firmware_file)
+
+# --- 第三批（有了自己的網域之後才看得到的）-----------------------------
+# 這些 denial 在第二批之前全部被 init 的寬權限蓋住，看不到。
+# 換網域之後才浮出來 —— 這正是「先做網域轉換再收斂權限」的理由。
+
+# /dev/ion —— 指紋影像的緩衝區（ioctlcmd=4900 = ION_IOC_ALLOC 那一組）
+allow gx_fpd ion_device:chr_file rw_file_perms;
+
+# /sys/class/leds —— 辨識時閃指示燈
+allow gx_fpd sysfs_leds:dir search;
+
+# goodix.fp.service.ready 等 8 條版本／就緒屬性
+set_prop(gx_fpd, goodix_fp_prop)

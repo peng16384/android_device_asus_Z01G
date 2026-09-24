@@ -1,0 +1,908 @@
+# Z01G 專屬的授權規則 —— 第一批
+#
+# 全部來自 permissive 模式下實際收集到的 AVC denial（見 CLAUDE.md 的
+# 「SELinux」一節）。每一條都標了是哪個行程、碰哪個檔案、為什麼需要。
+#
+# 刻意不使用 audit2allow 的原始輸出：它會把 `sysfs`、`proc` 這種通用 type
+# 整個放行。這裡改成先在 genfs_contexts 把路徑標成語意明確的 type，
+# 再只授權那一個 type，範圍小很多。
+#
+# ⚠ 這是第一批，不是完整的。kernel 的 audit 限速（5/秒）在收集時丟掉了
+#   八千多筆訊息，所以一定還有沒看到的。切 enforcing 之前要再收集幾輪。
+
+###########################################################################
+# 屬性寫入
+#
+# 這些屬性的 type 定義在 property.te、對應在 property_contexts。
+# set_prop() 這個 macro 同時授權三件事：
+#     allow <domain> <type>:property_service set;
+#     allow <domain> property_socket:sock_file write;
+#     allow <domain> init:unix_stream_socket connectto;
+# 所以先前看到的 property_socket / connectto denial 會一併解決。
+###########################################################################
+set_prop(hal_audio_default, asus_audio_eu_prop)
+set_prop(hal_camera_default, legacy_camera_dbg_prop)
+set_prop(hal_graphics_composer_default, asus_display_sar_prop)
+set_prop(hal_sensors_default, asus_sensors_prop)
+set_prop(hal_wifi_supplicant_default, legacy_wlan_sta_prop)
+set_prop(netmgrd, legacy_net_doxlat_prop)
+set_prop(nqnfcinfo, legacy_nfc_chipid_prop)
+set_prop(tee, legacy_tee_listener_prop)
+set_prop(thermal-engine, legacy_thermal_prop)
+set_prop(system_server, asus_gps_prop)
+
+# vendor_init 要能設這些（它從 build.prop 載入時就會寫一次）
+set_prop(vendor_init, asus_audbg_prop)
+set_prop(vendor_init, asus_gps_prop)
+set_prop(vendor_init, asus_sensors_prop)
+set_prop(vendor_init, asus_display_sar_prop)
+set_prop(vendor_init, asus_audio_eu_prop)
+set_prop(vendor_init, legacy_camera_dbg_prop)
+set_prop(vendor_init, legacy_net_doxlat_prop)
+set_prop(vendor_init, legacy_tee_listener_prop)
+set_prop(vendor_init, legacy_nfc_chipid_prop)
+set_prop(vendor_init, legacy_thermal_prop)
+set_prop(vendor_init, legacy_wlan_sta_prop)
+
+###########################################################################
+# /proc/asusevtlog
+#
+# ASUS 的事件記錄節點，多個 ASUS/QTI 行程會寫入開關機、充電、通話等事件。
+# 實測 rild 與 wpa_supplicant 都會碰。
+###########################################################################
+allow rild proc_asusevtlog:file { getattr open read write append };
+allow hal_wifi_supplicant_default proc_asusevtlog:file { getattr open append };
+
+###########################################################################
+# 相機
+###########################################################################
+# /proc/driver/ois_device —— OIS 光學防手震的控制節點
+allow hal_camera_default proc_ois_device:file { getattr open write };
+# /system/vendor/lib/DataSet/ispDB/ParameterDB.db
+# camera provider 會對這個 ISP 參數資料庫上鎖（SQLite）
+allow hal_camera_default vendor_file:file lock;
+
+###########################################################################
+# 電池 / 充電
+#
+# healthd 與 hvdcp 走的是 /sys/devices/... 的實體路徑，
+# AOSP 只標記了 /sys/class/power_supply，所以那裡沒被標到。
+# 已在 genfs_contexts 補標成 sysfs_batteryinfo（AOSP 既有的 type）。
+###########################################################################
+allow healthd sysfs_batteryinfo:file r_file_perms;
+allow hvdcp sysfs_batteryinfo:file r_file_perms;
+
+###########################################################################
+# memtrack HAL
+#
+# 讀 /sys/kernel/debug/kgsl/proc/<pid>/mem 取得每個行程的 GPU 記憶體用量。
+# 注意這是 debugfs 不是 sysfs（qcom 既有的 sysfs_kgsl_proc 是另一個路徑）。
+###########################################################################
+allow hal_memtrack_default debugfs_kgsl:dir search;
+allow hal_memtrack_default debugfs_kgsl:file r_file_perms;
+
+###########################################################################
+# 指紋
+###########################################################################
+allow hal_fingerprint_default goodix_fp_device:chr_file rw_file_perms;
+# /data/system/users/*/fpdata
+allow hal_fingerprint_default fingerprintd_data_file:dir r_dir_perms;
+# HAL 透過 vndbinder 跟 gxFpDaemon 溝通
+allow hal_fingerprint_default vndbinder_device:chr_file rw_file_perms;
+
+###########################################################################
+# init
+#
+# 第一批這裡有 7 條 scontext=init 的規則，當時的註解寫「gx_fpd / fpseek
+# 沒有 seclabel，繼承了 init 的網域」。那個診斷是對的，但處理方式錯了
+# —— 不該放寬 init，該給那些 daemon 自己的網域。
+#
+# 這一批做了：gx_fpd / fpseek / sar_setting / modem_country 各自有了
+# exec type 與網域（見 file_contexts 與對應的 .te），所以原本掛在 init
+# 名下的指紋、qseecom、vndbinder、sysfs、socket 那幾條全部搬走了。
+#
+# 下面只留下確實屬於 init 本身的。
+###########################################################################
+# init 自己要讀 /sys/class/graphics/fb0 那一層的 symlink
+allow init sysfs_graphics:lnk_file r_file_perms;
+
+###########################################################################
+# 耳機孔的 UART/音訊切換
+#
+# ⚠ 第一批這裡寫的是 set_prop(toolbox, ...) + allow toolbox，註解說
+#   「實測落在 toolbox 網域」—— **那個判斷是錯的**。
+#   這一輪收到的是 `avc: denied { execute_no_trans } path="/system/bin/sh"
+#   scontext=u:r:init:s0`，代表根本沒有發生網域轉換，腳本是跑在 init 裡。
+#
+#   已改為在 init.z01g.rc 用 /vendor/bin/sh 起，讓 qcom 既有的
+#   domain_auto_trans 把它帶進 qti_init_shell。授權改列在下面「第二批」
+#   的 qti_init_shell 那一段。
+###########################################################################
+
+###########################################################################
+# 第二批
+###########################################################################
+
+###########################################################################
+# ⚠ 讀屬性：自訂 type 的代價
+#
+# 把屬性從 default_prop / system_prop / wifi_prop 搬到專屬 type，
+# **同時也拿掉了所有人的讀取權**——那三個通用 type 是幾乎全網域可讀的。
+# 實測就踩到了：
+#     avc: denied { open read } for
+#          path="/dev/__properties__/u:object_r:legacy_tee_listener_prop:s0"
+#          scontext=u:r:hal_keymaster_default:s0
+#          （hal_gatekeeper_default、init-qti-fbe-sh 也一樣）
+#
+# `sys.listeners.registered` 是 qseecomd 準備好的旗標，keymaster 開機時
+# 要等它。**enforcing 下讀不到就是開不了機。**
+#
+# 收緊的目的是「誰能**寫**」，不是「誰能**讀**」，所以這裡把讀取權
+# 原樣還回去，維持與搬移前相同的可見範圍。
+###########################################################################
+get_prop(domain, asus_audbg_prop)
+get_prop(domain, asus_gps_prop)
+get_prop(domain, asus_sensors_prop)
+get_prop(domain, asus_display_sar_prop)
+get_prop(domain, asus_audio_eu_prop)
+get_prop(domain, asus_audio_amp_prop)
+get_prop(domain, asus_agps_prop)
+get_prop(domain, asus_fp_hw_prop)
+get_prop(domain, legacy_camera_dbg_prop)
+get_prop(domain, legacy_camera_eeprom_prop)
+get_prop(domain, legacy_net_doxlat_prop)
+get_prop(domain, legacy_tee_listener_prop)
+get_prop(domain, legacy_nfc_chipid_prop)
+get_prop(domain, legacy_thermal_prop)
+get_prop(domain, legacy_wlan_sta_prop)
+
+###########################################################################
+# 新增的屬性寫入（屬性名取自 AVC 原文的 property= 欄位）
+###########################################################################
+set_prop(hal_audio_default, asus_audio_amp_prop)     # audio.asus.amp_cal
+set_prop(hal_camera_default, legacy_camera_eeprom_prop) # camera.hw.eeprom.candidate
+set_prop(system_server, asus_agps_prop)              # persist.np.asus.agps.ntpinjecttime
+set_prop(vendor_init, asus_audio_amp_prop)
+set_prop(vendor_init, legacy_camera_eeprom_prop)
+set_prop(vendor_init, asus_agps_prop)
+set_prop(vendor_init, asus_fp_hw_prop)
+
+###########################################################################
+# qti_init_shell
+#
+# device/qcom/sepolicy 有 `domain_auto_trans(init, vendor_shell_exec,
+# qti_init_shell)` —— 也就是 init 執行 **/vendor/bin/sh** 時會轉到這個
+# 受限網域。init.qcom.post_boot.sh 等腳本就是這樣跑的。
+#
+# 它現有的 set_prop 清單沒涵蓋本機 post_boot 實際會寫的這幾條
+# （屬性名同樣取自 AVC 原文）：
+###########################################################################
+set_prop(qti_init_shell, dalvik_prop)        # dalvik.vm.heapminfree
+set_prop(qti_init_shell, debug_prop)         # debug.gralloc.gfx_ubwc_disable
+set_prop(qti_init_shell, system_prop)        # persist.sys.force_sw_gles
+set_prop(qti_init_shell, system_radio_prop)  # sys.usb.configfs
+set_prop(qti_init_shell, wigig_prop)         # persist.vendor.wigig.enable
+
+
+# 耳機孔的 UART/音訊切換腳本改用 /vendor/bin/sh 起（見 init.z01g.rc），
+# 因此落在這個網域而不是 init。
+set_prop(qti_init_shell, asus_audbg_prop)
+allow qti_init_shell proc_audio_debug:file rw_file_perms;
+
+###########################################################################
+# 其餘零星缺口
+###########################################################################
+# 第一批只給了 file，漏了 dir：healthd/hvdcp 要先 search 才能開檔
+allow hvdcp sysfs_batteryinfo:dir search;
+allow healthd sysfs_batteryinfo:dir search;
+
+# 第一批給了 ois_device 的 getattr/open/write，漏了 read
+allow hal_camera_default proc_ois_device:file read;
+# /dev/asusRgbSensor 與 /proc/driver/{FrontModule,dualcam_cali}
+allow hal_camera_default asus_rgb_sensor_device:chr_file rw_file_perms;
+allow hal_camera_default proc_asus_camera:file r_file_perms;
+
+# /data/misc/wifi/entropy.bin —— Android 9 的 AOSP supplicant 不再用這個檔，
+# 但 ASUS 的 blob 版還會寫
+allow hal_wifi_supplicant_default wifi_data_file:file create_file_perms;
+
+
+###########################################################################
+# dontaudit —— 「拒絕它是對的，只是不想一直看到」
+#
+# 這些 denial 在 enforcing 下**應該**繼續被擋。加 allow 等於為了讓
+# log 乾淨而開洞。dontaudit 只關掉稽核訊息，實際行為不變。
+###########################################################################
+# App 探測系統資訊（多半是 GApps 的裝置回報、GPU driver 試開 debugfs）。
+# 讓 App 讀 /proc/modules、/proc/interrupts 是實打實的資訊洩漏。
+# （第三批已改用 appdomain 涵蓋，見下）
+dontaudit priv_app proc:file { getattr open };
+dontaudit priv_app proc_interrupts:file { getattr open };
+dontaudit priv_app proc_modules:file { getattr open };
+dontaudit priv_app device:dir open;
+dontaudit priv_app sysfs_android_usb:file open;
+
+# ⚠ 原本這裡是 `dontaudit qti_init_shell default_prop:property_service set;`
+#   理由寫的是「只是 ro.sf.lcd_density，那本來就會失敗」。**那個判斷錯了** ——
+#   它其實同時蓋掉了四個真的屬性設定，切 enforcing 才從 init 自己的 log
+#   （不是 audit）看到：
+#       ro.alarm_boot
+#       ro.gpu.available_frequencies
+#       persist.asus.wigig.support
+#       ro.sf.lcd_density            <- 只有這個是無害的
+#   前三個已在 property_contexts 對到 qcom 既有的型別。
+#
+#   移除這條 dontaudit，讓之後再有新的屬性被擋時看得見。
+#   代價是每次開機會有一條 ro.sf.lcd_density 的 denial ——
+#   那是已知良性的（vendor_init 早就從 build.prop 設過，
+#   SELinux 檢查發生在唯讀檢查之前，所以訊息從「已設定」變成「權限不足」）。
+#
+# 教訓：**dontaudit 一個通用型別，等於把那個網域對該型別的所有失敗一起消音。**
+#       寫 dontaudit 之前要先確認「被蓋掉的只有我以為的那一條」。
+
+# WLAN driver 把 log 寫到 /data/media/0/wlan_logs（ASUS 的除錯功能）。
+# 讓 wcnss_service 碰使用者的內部儲存空間不是好主意，擋掉即可。
+dontaudit wcnss_service media_rw_data_file:dir { getattr open read search };
+dontaudit wcnss_service media_rw_data_file:file { getattr open read write append };
+
+# dac_override —— domain.te:1385 的 neverallow 把它限制在
+#     `dac_override_allowed` 這個 attribute 內（vold、init、installd 那幾個）。
+# 想加 allow 會編譯失敗，想把網域塞進那個 attribute 等於繞過檢查。
+# AOSP 的立場是「該修檔案權限，不是給 root 萬用通行證」；上游 qcom 也沒有
+# 把 qti_init_shell 加進去。
+#
+# ★ 2026-09-24 逐條查過了（拿掉 dontaudit 刷 boot.img 再收一輪，見下）：
+#
+#   qti_init_shell -> **是真的壞了，已經從根本修掉**。
+#       qcom-sh 與 qcom-post-boot 在 ASUS 的 init.qcom.rc 裡只有 `user root`、
+#       沒有 group 行，碰不到 radio / system / wakelock 擁有的節點。
+#       最嚴重的是 /data/vendor/radio/copy_complete 停在 0 ——
+#       那是 QCRIL modem config 模組等的旗標（libril-qc-qmi-1.so 裡有這字串）。
+#       修法不是放寬政策，是補 group：見 tools/97_patch_qcom_init_rc.py。
+#       所以這裡**不再 dontaudit**，留著讓它在下一輪現形（應該已經沒有）。
+#
+#   hal_usb_default -> **給了也沒用，維持擋住**。
+#       它寫的是 /sys/class/dual_role_usb/otg_default/{mode,data_role,power_role}。
+#       那三個的 mode 是 class-dual-role.c 的 dual_role_attr_is_visible() 算的：
+#           umode_t mode = S_IRUSR|S_IRGRP|S_IROTH;          // 0444 起跳
+#           if (property_is_writeable(...) > 0) mode |= S_IWUSR;
+#       而 usbpd_dr_prop_writeable() 只在對端支援 DR/PR swap 時回非 0。
+#       反證：在 permissive 的 su 網域（capability 全通，實測能列 drwx------ 的
+#       別人目錄、能寫別人的 0444 一般檔）裡，一樣開不了這三個 0444 sysfs——
+#       連毫不相干的 /sys/devices/soc0/soc_id 也開不了。
+#       而真的可以切換角色時，dual_role_changed_work() 會呼叫 sysfs_update_group()
+#       重跑 is_visible，檔案自己變 0644 root-owned，root 直接寫得進去。
+dontaudit hal_usb_default self:capability dac_override;
+
+# pm.dexopt.install —— domain.te:547 限定只有 init 與 system_server 能寫
+# package manager 的屬性。qcom 的 post_boot 腳本想調 dexopt filter，
+# 擋掉不影響功能（AOSP 的預設值照用）。
+dontaudit qti_init_shell pm_prop:property_service set;
+dontaudit qti_init_shell pm_prop:file no_rw_file_perms;
+
+# /data/local/tmp/dalvik-cache 的殘留 symlink
+dontaudit init shell_data_file:lnk_file getattr;
+
+# 以下是**我們自己下 adb 指令**造成的，不是裝置行為：
+#   dmesg（syslog_read）、cat /proc/asound/cards、讀 subsys 的 name/state
+dontaudit shell kernel:system syslog_read;
+dontaudit shell proc_audiod:file read;
+dontaudit shell { sysfs sysfs_data }:file { open read };
+
+
+###########################################################################
+# 第三批
+#
+# 來源：第二批刷入後、從乾淨開機收的那一輪（57 條）。
+# init 網域的 denial 從 13 條降到 1 條 —— 四個新網域接手了。
+###########################################################################
+
+###########################################################################
+# vendor_init —— 這一批數量最多（12 條），而且全部是真的需要
+#
+# init.qcom.rc 裡的 mkdir / chown / chmod 由 vendor_init 執行。
+# AOSP 給了 init 這些權限，但沒有一併給 vendor_init
+# （Treble 拆分時 vendor_init 是新切出來的網域，涵蓋範圍比 init 小）。
+###########################################################################
+# mkdir 掛載點時要動到 rootfs（chown/chmod 那一步）
+allow vendor_init rootfs:dir { search add_name write setattr };
+
+# ⚠ 原本這裡還有三條
+#       allow vendor_init {firmware_file,bt_firmware_file,adsprpcd_file}:dir create;
+#   已移除 —— 它們會撞上 domain.te:511：
+#       neverallow * contextmount_type:dir_file_class_set { create ... };
+#   那三個型別是靠 mount 的 context= 標記整個檔案系統的，**誰都不准建**。
+#   正解是讓掛載點在 ramdisk 裡就存在（BoardConfig.mk 的
+#   BOARD_ROOT_EXTRA_FOLDERS），init 的 mkdir 就會拿到 EEXIST，
+#   SELinux 的 create 檢查根本不會發生。詳見 BoardConfig.mk 的註解。
+
+# /data/vendor/... 底下各子目錄的 chown/chmod
+allow vendor_init {
+    camera_data_file
+    dhcp_data_file
+    media_rw_data_file
+    time_data_file
+    wifi_data_file
+    wpa_socket
+}:dir setattr;
+# dpmd_data_file 是 **private** 型別（device/qcom/sepolicy/private/file.te），
+# 在 vendor 側引用不到 —— 那一條在 ../private/z01g.te。
+allow vendor_init system_data_file:dir { search setattr write };
+
+###########################################################################
+# 相機：RK1608 前置 ISP 與後鏡頭 OTP
+###########################################################################
+allow hal_camera_default asus_preisp_device:chr_file rw_file_perms;
+set_prop(hal_camera_default, asus_camera_app_prop)
+set_prop(vendor_init, asus_camera_app_prop)
+set_prop(vendor_init, goodix_fp_prop)
+
+###########################################################################
+# 指紋 HAL 的 vndbinder
+#
+# 第二批只給了 vndbinder_device 的讀寫，漏了 vndservicemanager 那一側
+# （它要讀 /proc/<pid>/attr/current 確認呼叫者身分）。
+# vndbinder_use() 巨集一次給齊，直接用它取代零散的規則。
+###########################################################################
+vndbinder_use(hal_fingerprint_default)
+
+###########################################################################
+# 其餘零星
+###########################################################################
+# supplicant 的 control interface —— /data/misc/wifi/sockets
+#
+# ⚠ 第三／四批這裡只給了 { write remove_name setattr add_name }，
+#   **漏了 search / read / open**，結果 enforcing 下換成下一層失敗：
+#       wpa_supplicant: Failed to initialize control interface
+#                       '/data/misc/wifi/sockets'.
+#   「有 :dir 規則」不等於「權限夠」—— 這是同一個錯的變形，
+#   tools/47 的靜態檢查已補上「dir 規則必須含 search」這一項。
+# ⚠ 要 create_dir_perms 不是 rw_dir_perms ——
+#   AOSP 的 rw_dir_perms = { r_dir_perms w_dir_perms }，**不含 setattr**；
+#   setattr / create / rename / rmdir 在 create_dir_perms 裡。
+#   supplicant 會對 sockets 目錄做 chmod/chown，少了 setattr 還是連不上。
+#   （第九批給了 rw_dir_perms，症狀從「開不了設定檔」變成「連不上 AP」。）
+allow hal_wifi_supplicant_default wpa_socket:dir create_dir_perms;
+allow hal_wifi_supplicant_default wpa_socket:sock_file create_file_perms;
+
+# init.qcom.post_boot.sh 調 VM 參數
+allow qti_init_shell proc_dirty_ratio:file { open write };
+allow qti_init_shell proc_page_cluster:file { open write };
+# 檢查 /data/vendor/radio/qcril.db 在不在
+allow qti_init_shell vendor_radio_data_file:file getattr;
+
+# GNSS 的 XTRA socket（loc_launcher 重啟時要先清掉舊的）
+allow location location_data_file:sock_file unlink;
+
+# ⚠ 原本這裡是 `allow system_server vfat:dir r_dir_perms;`，已移除 ——
+#   system_server.te:817 有
+#       neverallow system_server sdcard_type:dir { open read write };
+#   理由寫在 AOSP 原始碼的註解裡：外接儲存被拔掉時 kernel 會殺掉正在讀它的
+#   行程，system_server 一死整台就重開。所以這條是保護機制，不是疏漏。
+#   對應的功能（清 SD 卡上的 Android/data）本來就該透過 vold / MediaProvider 做。
+dontaudit system_server vfat:dir { open read };
+
+###########################################################################
+# dontaudit（第三批）
+###########################################################################
+# /sys/kernel/debug/kgsl —— Adreno 的 user driver 每個行程都會試著開它做 profiling。
+# 真正需要的只有 memtrack HAL（第一批已授權），其餘擋掉不影響繪圖。
+# Adreno 的 user driver 在每個行程裡都會試著開 debugfs 做 profiling。
+# 真正需要的只有 memtrack HAL（第一批已授權），其餘擋掉不影響繪圖。
+# appdomain 是 public 的 attribute，涵蓋所有 App 網域（含 LineageOS 自己的
+# snap_app），比逐一列舉可靠。
+dontaudit appdomain debugfs_kgsl:dir search;
+dontaudit { hal_camera_default mediacodec system_server system_app } debugfs_kgsl:dir search;
+
+# App 探測硬體資訊 —— 這些在 enforcing 下本來就該擋。
+# /proc/ioports、/proc/stat、/proc/tty/drivers、/sys/fs/selinux/enforce、
+# /sys/devices/... 的一堆節點，多半是裝置資訊類 App 或 SDK 在收集指紋特徵。
+dontaudit untrusted_app { proc proc_stat proc_tty_drivers }:file { getattr open read };
+dontaudit untrusted_app selinuxfs:file { open read };
+dontaudit untrusted_app { sysfs sysfs_android_usb sysfs_net sysfs_switch }:dir { open read };
+dontaudit untrusted_app sysfs:file { getattr open read };
+dontaudit priv_app sysfs:file { open read };
+dontaudit priv_app sysfs_android_usb:file getattr;
+# memtrack / perf 是給系統用的，App 不該直接呼叫
+dontaudit { priv_app untrusted_app } hal_memtrack_default:binder call;
+dontaudit { priv_app untrusted_app } hal_memtrack_hwservice:hwservice_manager find;
+dontaudit untrusted_app hal_perf_hwservice:hwservice_manager find;
+
+# 感測器 HAL 會 fork 一個 sh 去跑 /vendor/bin/sns_dump_request 收 dump。
+# 那是診斷用途（名字就寫著 dump request），擋掉不影響感測器運作。
+# 要讓它能跑的話得給 sns_dump_request 自己的網域，不值得為了 dump 工具做。
+dontaudit hal_sensors_default shell_exec:file { execute execute_no_trans getattr open read };
+dontaudit hal_sensors_default sensors_test_exec:file execute_no_trans;
+
+# 我們自己下的 adb 指令（讀 /proc/driver/audio_debug、/proc/asound/cards）
+dontaudit shell proc_audio_debug:file { open read };
+dontaudit shell proc_audiod:file open;
+
+
+###########################################################################
+# /asusfw 的存取
+#
+# 掛載改用 context=u:object_r:asusfw_file:s0（見 init.z01g.rc），
+# 這裡授權真正會讀它的兩個 HAL。
+###########################################################################
+allow hal_audio_default asusfw_file:dir r_dir_perms;     # mixer_paths、acdbdata、功放韌體
+allow hal_audio_default asusfw_file:file r_file_perms;
+allow hal_camera_default asusfw_file:dir r_dir_perms;    # ois/OIS_programFW.bin
+allow hal_camera_default asusfw_file:file r_file_perms;
+
+
+###########################################################################
+# 第四批
+#
+# 來源：第三批刷入後的第四輪，23 條（前一輪 57），audit_lost 48（前一輪 397）。
+# /firmware 那五個掛載點與 /asusfw 的 context= 都確認生效。
+###########################################################################
+
+# --- vendor_init：又多了五處 /data 子目錄 --------------------------------
+allow vendor_init nfc_data_file:dir { search setattr };      # /data/vendor/nfc
+allow vendor_init tombstone_data_file:dir { search setattr };
+allow vendor_init system_data_file:dir { search add_name create };  # /data/misc/media
+#
+# ⚠ 原本還有 `allow vendor_init system_data_file:file { open write setattr };`
+#   （init.qcom.rc:466-468 的 /data/misc/dts/playbackstatus.info），
+#   但 domain.te:1181 只讓 system_server / system_app / init / installd /
+#   vold_prepare_subdirs 寫 system_data_file:file。vendor_init 不在名單裡。
+#   硬開等於讓 vendor 的 init 能寫任何一個沒有專屬型別的 /data 檔案。
+#   正解是給 /data/misc/dts 自己的型別（見下方與 file.te / file_contexts）。
+# qvrd_data_file 是 private 型別，那條在 ../private/z01g.te
+
+# --- 相機 -----------------------------------------------------------------
+allow hal_camera_default asus_rgb_sensor_device:chr_file rw_file_perms;  # 已涵蓋 asusFRGBSensor
+allow hal_camera_default proc_asus_camera:file r_file_perms;             # 已涵蓋 RearModule
+set_prop(hal_camera_default, asus_camera_app_prop)   # camera.beautylive.support_torch
+
+# --- 指紋 -----------------------------------------------------------------
+# Goodix HAL 讀框架寫的 /data/system/users/0/settings_fingerprint.xml
+# （fingerprint.gx5206.so 的 strings 裡就有這個檔名）
+allow hal_fingerprint_default system_data_file:file r_file_perms;
+
+# --- Wi-Fi ----------------------------------------------------------------
+# （第四批這兩條已被上面的 rw_dir_perms / create_file_perms 涵蓋）
+
+# --- RIL ------------------------------------------------------------------
+# SQLite 開 /system/vendor/radio/qcril_database/qcril.db 時會下 ioctl
+allow rild vendor_file:file ioctl;
+# init.qcom.rc 的 modem_config 檢查
+# （getattr 不夠 —— 要進目錄讀底下的檔案得有 search，靜態檢查抓到的）
+allow qti_init_shell vendor_radio_data_file:dir r_dir_perms;
+allow qti_init_shell vendor_radio_data_file:file rw_file_perms;
+set_prop(qti_init_shell, vendor_crash_prop)   # persist.vendor.crash.cnt
+
+# --- ASUS 事件記錄 --------------------------------------------------------
+# 第一批給了 rild 與 supplicant，這輪 system_server 也會寫
+allow system_server proc_asusevtlog:file { open append };
+
+###########################################################################
+# dontaudit（第四批）
+###########################################################################
+# installd 會對所有掛載的檔案系統做 quotactl。/asusfw 是唯讀的 ASUS 分割，
+# 根本沒有 quota，擋掉只是讓它跳過。
+dontaudit installd asusfw_file:filesystem quotaget;
+
+# ⚠⚠⚠ 這裡原本是 `dontaudit fpseek self:capability dac_override;`
+#
+# **那是這個專案到目前為止代價最高的一個錯誤判斷。**
+# 當時的理由寫「它跑 root，真要存取不該靠這張萬用通行證」—— 話沒錯，
+# 但正確的反應是**去修服務的 user/group**，不是把訊息關掉。
+#
+# 後果：切 enforcing 之後指紋整條鏈斷掉，而且**完全沒有任何 AVC**。
+# 查了六輪才定位，中間還誤判成 policy 缺 tee_device / ion_device /
+# trustlet 目錄權限，各補了一次、各刷了一次。
+#
+# 真正的根因是 DAC 不是 SELinux 型別：
+#     /dev/goodix_fp   system:root   0760
+#     /dev/qseecom     system:drmrpc 0660
+# 而服務寫的是 `user root group system` —— uid 0 兩個都不是 owner、
+# gid 也不在 root / drmrpc 裡，所以要 CAP_DAC_OVERRIDE。
+# SELinux 擋掉那個 capability（domain.te:1385 的 attribute 限制），
+# 而這條 dontaudit 把唯一的線索也消掉了。
+# 已改成 `user system group system drmrpc`（見 init.z01g.rc），
+# 那樣它就是兩個節點的 owner，不需要任何 capability。
+#
+# **`dontaudit <網域> self:capability dac_override` 幾乎都代表那個服務的
+#   user/group 設錯了。** 看到它要去對照節點的 owner/group，而不是靜音。
+#   下面那幾條（qti_init_shell / hal_usb_default / rfs_access / sensors /
+#   dpmd）都還沒逐一查過 —— 待辦。
+
+# webview_zygote 往 zygote 的 socket 寫（AOSP 自己的已知問題，與本機無關）
+dontaudit webview_zygote zygote:unix_dgram_socket write;
+
+# 我們自己下的 adb 指令（ls /asusfw/audio、ls -dZ /persist）
+dontaudit shell asusfw_file:dir { open read };
+dontaudit shell asusfw_file:file getattr;
+dontaudit shell mnt_vendor_file:dir getattr;
+
+
+###########################################################################
+# /data/misc/dts —— DTS Eagle 音訊後處理的播放狀態
+#
+# init.qcom.rc:466-468
+#     mkdir /data/misc/dts 0771 media camera
+#     write /data/misc/dts/playbackstatus.info 2
+#     chmod 777 data/misc/dts/playbackstatus.info
+###########################################################################
+allow vendor_init dts_data_file:dir { create search add_name write setattr };
+allow vendor_init dts_data_file:file { create open write setattr };
+allow hal_audio_default dts_data_file:dir r_dir_perms;
+allow hal_audio_default dts_data_file:file rw_file_perms;
+
+
+###########################################################################
+# 第五批
+#
+# 第四輪 23 條 -> 這一輪 16 條，audit_lost 48 -> 28。
+# 一樣有一半是「denial 指向通用型別」——路徑沒標，不是權限沒開。
+###########################################################################
+
+# --- 相機 -----------------------------------------------------------------
+allow hal_camera_default asus_laser_device:chr_file rw_file_perms;  # /dev/LaserSensor
+allow hal_camera_default proc_asus_camera:file r_file_perms;        # 已涵蓋 front_otp
+set_prop(hal_camera_default, asus_display_pvc_prop)                 # persist.asus.pvcabc
+set_prop(vendor_init, asus_display_pvc_prop)
+
+# --- Wi-Fi ----------------------------------------------------------------
+# wifi@1.0-service 寫 /sys/kernel/boot_wlan/boot_wlan 給 WLAN 上電
+allow hal_wifi_default sysfs_wlan_boot:dir search;
+allow hal_wifi_default sysfs_wlan_boot:file rw_file_perms;
+# init.qcom.rc 對 /data/misc/wifi/wpa_supplicant.conf 的 chown/chmod
+allow vendor_init wifi_data_file:file { open write setattr };
+
+# --- 音訊 -----------------------------------------------------------------
+# ACDB 的差異快取 /data/vendor/misc/audio/acdbdata/delta/adsp_avs_config.acdbdelta
+allow hal_audio_default vendor_data_file:file { getattr open read append };
+
+# --- 指紋 -----------------------------------------------------------------
+# 第一批只給了 r_dir_perms，但它要在 fpdata 底下建檔
+allow hal_fingerprint_default fingerprintd_data_file:dir rw_dir_perms;
+
+# --- modem 的遠端儲存 -----------------------------------------------------
+allow rmt_storage debugfs_rmt_storage:dir search;
+allow rmt_storage debugfs_rmt_storage:file rw_file_perms;
+
+# --- ASUS 事件記錄 --------------------------------------------------------
+allow system_server proc_asusevtlog:file getattr;
+
+###########################################################################
+# dontaudit（第五批）
+###########################################################################
+# 繪圖相關的網域也會試著開 debugfs 的 kgsl（同第三批的理由）
+dontaudit {
+    hal_graphics_allocator_default hal_graphics_composer_default surfaceflinger
+} debugfs_kgsl:dir search;
+
+# 又兩個想用 dac_override 的（同樣被 domain.te:1385 的 attribute 限制擋住）
+#
+# ★ 2026-09-24 查過，兩個都維持擋住，理由不同：
+#
+#   rfs_access（tftp_server）-> 冗餘的動作，擋掉不影響功能。
+#       它 rc 裡只有 `user root`，但**自己**會 setgroups(2951,2952,1000,3010)
+#       + setgid/setuid(2951) + capset 只留 NET_BIND_SERVICE|BLOCK_SUSPEND。
+#       strace 從頭跑一次看得很清楚：drop 之前它還是 root，就先掃了一遍
+#       /persist/rfs/**（0700 owner 2951）—— root 不是 owner，要 DAC 覆寫。
+#       drop 之後它用 2951 的身分把同一批目錄再 mkdir 一次（全部 EEXIST）
+#       並正常運作。也就是前半段那一遍是多餘的。
+#       佐證：/persist/rfs/msm/mpss 的 mtime 會隨開機更新，modem RFS 是活的。
+#
+#   sensors（sensors.qcom）-> 是 /dev/diag，刻意不給。
+#       它 rc 是 `user root group root`，但自己 drop 成 uid/gid 9999(nobody)
+#       且不帶任何附加群組，而 /dev/diag 是 crw-rw---- 1000:2901。
+#       確認方法：enforcing / permissive 各重啟一次比對 /proc/<pid>/fd，
+#       唯一的差異就是 permissive 多開了 /dev/diag；再用 chmod 666 /dev/diag
+#       在 enforcing 下重啟，它就開得起來 -> 擋的是 DAC 不是型別規則。
+#       那條路只是 QXDM 診斷記錄，感測器功能不靠它；而 /dev/diag 是 modem
+#       的診斷通道，讓一個 nobody 身分的 daemon 進去不划算。
+#       （對照組：dpmd 的附加群組裡有 2901，所以它開 diag 是合法的。）
+dontaudit rfs_access self:capability dac_override;
+dontaudit sensors self:capability dac_override;
+
+# 我們自己下的 adb 指令
+dontaudit shell dts_data_file:dir getattr;
+dontaudit shell proc_asus_camera:file getattr;
+
+
+###########################################################################
+# 第六批
+#
+# 第五輪 16 條 -> 這一輪 8 條，其中 4 條是 shell（我們自己下 adb 指令
+# 檢查新標記時產生的），**裝置本身只剩 4 條**。audit_lost 28 -> 20。
+###########################################################################
+
+# /proc/driver/rear2_otp —— 望遠鏡頭（imx351）的 OTP
+# 三顆鏡頭各一個節點：front_otp / rear_otp / rear2_otp，這輪補齊最後一個
+allow hal_camera_default proc_asus_camera:file r_file_perms;
+
+# thermal-engine 也會寫 ASUS 的事件記錄（過熱降頻會留紀錄）
+allow thermal-engine proc_asusevtlog:file rw_file_perms;
+
+# time_daemon 讀 /data/time/ats_1、ats_2（NITZ 時間校正的持久化狀態）
+allow time_daemon time_data_file:file r_file_perms;
+
+# cnss_diag 讀 /data/misc/wifi/cnss_diag.conf 並附加 log
+allow wcnss_service wifi_data_file:file { getattr open read append };
+
+
+###########################################################################
+# 第七批
+#
+# 第六輪刷入後：4 條，audit_lost = 1（幾乎沒漏了）。
+###########################################################################
+
+# 第二批給了 healthd / hvdcp 的 sysfs_batteryinfo:dir search，thermal-engine 也要
+allow thermal-engine sysfs_batteryinfo:dir search;
+
+# /data/connectivity（Oreo 舊路徑）—— 規則照抄 qcom cnd.te 對 cnd_data_file 的三條
+allow cnd legacy_cnd_data_file:dir rw_dir_perms;
+allow cnd legacy_cnd_data_file:file create_file_perms;
+allow cnd legacy_cnd_data_file:sock_file { create setattr unlink };
+
+# dpmd 的 dac_override —— **刻意不 dontaudit**，留著讓它可見（2026-09-24）。
+#
+# ⚠ 先更正：第一輪觀察時我說「已經不會發生了」，那是錯的。
+#   那一輪 audit_lost=49，我拿一次有丟訊息的紀錄當成「沒有發生」。
+#   下一輪 audit_lost=1，它就穩定地每次啟動出現 4 條 dac_override
+#   + 3 條 dac_read_search。**audit 有丟失時不能用來證明「沒有」。**
+#
+# 查過、排除掉的：
+#   - 用真實身分（uid 0 -> 1000、gid 1000、附加群組 1001 2901 3003 3009 3010）
+#     把 strace 裡 root 階段的每一個 openat 逐一對 mode/owner/group 判斷，
+#     **全部通過**。/dev/diag 是 660 1000:2901，而 2901 就在它的群組裡
+#     —— 所以不是 fpseek 那種 user/group 設錯。
+#   - 一次真實重啟的 7596 行 strace 裡，**零個 EACCES / EPERM**。
+#
+# 沒查出來的：到底是哪一個 syscall 觸發了 capability 檢查。
+#   出 denial 的 pid 不在我們附掛到的那條 fork 鏈上（試了三次都是競態）。
+#
+# 結論：沒有任何呼叫失敗，但也沒能證明無害。比照 ro.sf.lcd_density 的處理，
+#       寧可留著 7 行噪音，也不要再用 dontaudit 把唯一的線索蓋掉。
+
+
+###########################################################################
+# 第八批 —— 從執行期 setenforce 1 的實測來的
+#
+# 這一批的來源與前七批不同：不是 permissive 下收集的 denial，
+# 而是**真的切到 enforcing 跑一遍**才暴露出來的。
+###########################################################################
+
+###########################################################################
+# ⚠⚠ 最重要的一條：只給 :file 不給 :dir，會被 dontaudit 完全蓋住
+#
+# 症狀：enforcing 下 Wi-Fi 打不開，而且**整個 log 裡沒有任何 wifi 相關的 AVC**。
+# 真正的訊息在 logcat 而不是 audit：
+#     wpa_supplicant: Failed to open config file
+#                     '/data/misc/wifi/p2p_supplicant.conf', error: Permission denied
+#
+# 原因：我們在第二批給了
+#       allow hal_wifi_supplicant_default wifi_data_file:file create_file_perms;
+#   但**沒給 `wifi_data_file:dir search`**。開一個檔案要對路徑上每一層目錄
+#   都有 search，少了就開不了。
+#
+# 而那條目錄的 denial 看不到，是因為 AOSP 自己把它靜音了：
+#     system/sepolicy/vendor/hal_wifi_supplicant_default.te:32
+#     dontaudit hal_wifi_supplicant_default wifi_data_file:dir search;
+#   （Android 9 的 supplicant 本來該用 /data/vendor/wifi，AOSP 把舊路徑的
+#     噪音關掉了。我們的 blob 是 Oreo 編的，還在用 /data/misc/wifi。）
+#
+# **dontaudit 只關稽核，照樣擋。** 所以「permissive 下收不到 denial」
+# 不等於「enforcing 下不會被擋」——這正是要真的切一次 enforcing 的理由。
+#
+# 以下是對全部規則做「有 :file 沒有 :dir」比對後補上的。
+# （proc_* 與 vendor_file 不在其中：AOSP 的 domain.te:25 有
+#   `allow domain proc:dir r_dir_perms`、163/194 行有 vendor_file 的
+#   目錄存取，已經涵蓋。）
+###########################################################################
+# 直接照 AOSP 給新路徑（wpa_data_file）的那一組，一次補齊。
+# 一次修一個權限的話，每次都要重編重刷才知道下一層卡在哪 ——
+# 已經浪費兩輪了（先是缺 dir search，再是 rw_dir_perms 缺 setattr）。
+#     system/sepolicy/vendor/hal_wifi_supplicant_default.te:19-21
+#     allow hal_wifi_supplicant_default wpa_data_file:dir       create_dir_perms;
+#     allow hal_wifi_supplicant_default wpa_data_file:file      create_file_perms;
+#     allow hal_wifi_supplicant_default wpa_data_file:sock_file create_file_perms;
+allow hal_wifi_supplicant_default wifi_data_file:dir create_dir_perms;
+allow wcnss_service wifi_data_file:dir r_dir_perms;
+allow vendor_init wifi_data_file:dir search;
+allow hal_audio_default vendor_data_file:dir r_dir_perms;     # acdbdata/delta
+allow hal_fingerprint_default system_data_file:dir search;    # /data/system/users/0
+allow time_daemon time_data_file:dir r_dir_perms;             # /data/time
+allow sar_setting sysfs_data:dir search;
+allow sar_setting sysfs_graphics:dir search;
+
+###########################################################################
+# ⚠ 第二個重複犯的錯：自訂屬性 type 忘了配 get_prop
+#
+# 第二批就寫過這個教訓（「收緊的目的是誰能**寫**，不是誰能**讀**」），
+# 但第三～五批新增的四個型別又漏了。實測：
+#     avc: denied { read } for name="u:object_r:asus_camera_app_prop:s0"
+#          scontext=u:r:snap_app:s0 permissive=0
+# 相機 App 讀不到 camera.* 屬性。
+#
+# → 新增屬性型別時，set_prop 與 get_prop 要同時寫。
+#   tools/47_verify_sepolicy.sh 現在會檢查這件事。
+###########################################################################
+get_prop(domain, goodix_fp_prop)
+get_prop(domain, asus_camera_app_prop)
+get_prop(domain, vendor_crash_prop)
+get_prop(domain, asus_display_pvc_prop)
+
+###########################################################################
+# 其餘 enforcing 下才浮現的
+###########################################################################
+# 相機 HAL 設 debug.HWJPEG.HAL / debug.JpegEncoderType.HAL（選 JPEG 編碼器）
+set_prop(hal_camera_default, debug_prop)
+# 相機 HAL 也會寫 ASUS 事件記錄
+allow hal_camera_default proc_asusevtlog:file { getattr open append };
+# /proc/driver/LaserFocus_Status_For_Camera（已在 genfs_contexts 標記）
+allow hal_camera_default proc_asus_camera:file r_file_perms;
+
+# health HAL 讀 /persist 上的電池資料
+allow hal_health_default mnt_vendor_file:dir search;
+
+# Settings 顯示記憶體用量時讀 /sys/block/zram0/mm_stat
+# （dir 那條是新加的靜態檢查抓出來的 —— 同一個「只給 file 沒給 dir」的錯）
+allow system_app sysfs_zram:dir search;
+allow system_app sysfs_zram:file r_file_perms;
+
+# ⚠ 原本寫的是 `dontaudit snap_app debugfs_kgsl:dir search;`，編不過 ——
+#   snap_app 是 LineageOS 的 **private** 型別
+#   （device/lineage/sepolicy/common/private/snap_app.te），
+#   而 debugfs_kgsl 是我們的 **vendor** 型別，兩邊都表達不出來。
+#   改用 public 的 `appdomain` attribute，順便涵蓋所有 App 網域 ——
+#   前面那兩條逐一列舉 priv_app / untrusted_app / ... 的也一併收斂掉了。
+
+
+###########################################################################
+# 第十一批 —— 實際切到 enforcing 開機一次之後才拿到的
+#
+# ⚠ 這一批的每一條，前面十輪 permissive **一條都沒看到**。
+#   原因有兩種：被 dontaudit 蓋掉，或只發生在開機早期而被 audit 限速丟掉。
+#   「permissive 收到 0 條 denial」完全不代表 enforcing 會過。
+###########################################################################
+
+# --- 指紋：整條鏈斷在第一步 -----------------------------------------------
+# fpseek 讀不到 /proc/fpmod -> 不設 ro.hardware.fingerprint ->
+# fpservice 不啟動 -> gx_fpd 不啟動 -> 指紋與 Home 鍵全死。
+# 實測 enforcing 開機後 `getprop ro.hardware.fingerprint` 是空的。
+allow fpseek proc_asus_fingerprint:file r_file_perms;
+
+# --- 一整排 QTI 服務根本沒起來 --------------------------------------------
+# init.qcom.rc 的 qti_init_shell 腳本用 `start <名>` 啟動這些，
+# init 會去查 ctl.start$<名> 的權限。全部被擋 = 資料網路(netmgrd/qmuxd)、
+# 感測器(sensors)、IPA(ipacm) 都沒有起來。
+set_prop(qti_init_shell, ctl_legacy_iop_prop)
+set_prop(qti_init_shell, ctl_legacy_ipacm_prop)
+set_prop(qti_init_shell, ctl_legacy_ipacmdiag_prop)
+set_prop(qti_init_shell, ctl_legacy_netmgrd_prop)
+set_prop(qti_init_shell, ctl_legacy_qmuxd_prop)
+set_prop(qti_init_shell, ctl_legacy_qti_prop)
+set_prop(qti_init_shell, ctl_legacy_sensors_prop)
+
+# --- 目錄少了 search ------------------------------------------------------
+# ⚠ 第四／七批給了這些型別 setattr 卻沒給 search。**沒有 search 就進不去目錄**，
+#   chown/chmod 也做不到。這是同一個錯的第三次，已加進 tools/47 的靜態檢查：
+#   「每一條 :dir 規則都必須含 search」。
+allow vendor_init legacy_cnd_data_file:dir { search setattr };
+allow hal_camera_default camera_data_file:dir search;
+allow system_server location_data_file:dir search;
+
+# --- time_daemon 要寫，不是只讀 -------------------------------------------
+# 第六批給了 r_file_perms，但它是要**寫** /data/time/ats_*（NITZ 校正結果）
+allow time_daemon time_data_file:file rw_file_perms;
+
+###########################################################################
+# dontaudit（第十一批）
+###########################################################################
+# dac_read_search 與 dac_override 一樣被 domain.te 的 attribute 限制住。
+#
+# ⚠ 這段原本的註解寫「它們本來就跑 root」—— **tftp_server 不是**，
+#   它跑 uid 2951，是自己 setuid 的（rc 裡只有 user root、沒有 group 行）。
+#   寫註解時沒查行程的實際身分。
+#
+# ★ 2026-09-24：
+#   rfs_access -> 與上面那條 dac_override 同一個原因（drop 之前多掃一遍
+#                 /persist/rfs），維持擋住。
+#   qti_init_shell -> 主要那幾條已從根本修掉（補 group + 讓 ver_info.txt
+#                 可讀，見 tools/97_patch_qcom_init_rc.py）。
+#                 刷進去實測：copy_complete 從 0 變成 1、ver_info.txt 變成
+#                 0640、post_boot 的 cpufreq 設定也生效了。
+#                 **剩下兩條刻意留著不 dontaudit**：那是
+#                 init.qcom.early_boot.sh:474 的
+#                     power_off_alarm_file=`cat /persist/alarm/powerOffAlarmSet`
+#                 （0600 system:system）。它是用 `exec u:r:qti_init_shell:s0 --`
+#                 跑的、沒帶 user/group，而 OnePlus 的 rc 那一行跟我們**完全相同**
+#                 —— 上游也有同樣的 denial。讀不到時變數為空 = 不是鬧鐘開機，
+#                 正好是正確的預設值，而且 ASUS 本來就設 ro.asus.alarmboot_support 0。
+dontaudit rfs_access self:capability dac_read_search;
+
+# shell 在 enforcing 下讀不到 /proc/asound 與 /asusfw —— 那是我們自己
+# 下 adb 指令造成的。⚠ 連帶 `dmesg` 也讀不到（第二批 dontaudit 了
+# shell kernel:system syslog_read），所以**用 adb shell 檢查 enforcing
+# 下的 denial 一定要先 adb root**，否則會得到「0 條」這種假結論。
+dontaudit shell proc_asound:dir search;
+
+
+###########################################################################
+# 第十二批 —— 第十一批刷入後，開機 enforcing 再測
+#
+# 成果：netmgrd / sensors 都起來了（ctl.start$ 那組修對了）、
+#       audit_lost 降到 0、被擋的只剩 4 條。
+# 但**指紋那條鏈還是斷的**，而且這次連 denial 都沒有。
+###########################################################################
+
+###########################################################################
+# 指紋：斷在兩個地方，一個有 denial 一個沒有
+#
+# (1) fpseek 要載 TrustZone 的 trustlet 才能辨識感測器型號。
+#     手動以 root 跑 /vendor/bin/fpseek 會印：
+#         Starting qsc_run_crypto_test: cmd = 552, thread = 1
+#         Start app: pass
+#     然後 ro.hardware.fingerprint 就設上 gx5206 了。
+#     第二批給了 gx_fpd 存取 /dev/qseecom（tee_device），**漏了 fpseek**。
+#     ⚠ 這條在 enforcing 下**沒有產生 AVC**，是靠「手動跑會成功、
+#       在自己的網域裡不會」這個對照才定位出來的。
+#
+# (2) fpservice.sh 的 `start gx_fpd` 被擋（這條有 denial）：
+#         avc: denied { set } for property=ctl.start$gx_fpd
+#              scontext=u:r:qti_init_shell:s0 tcontext=u:object_r:ctl_start_prop:s0
+#     init 的 log 講得更白：
+#         init: Unable to set property 'ctl.start' to 'gx_fpd':
+#               Invalid permissions to perform 'start' on 'gx_fpd'
+###########################################################################
+allow fpseek tee_device:chr_file rw_file_perms;
+set_prop(qti_init_shell, ctl_legacy_gxfpd_prop)
+
+###########################################################################
+# 其餘四條
+###########################################################################
+# qvop-daemon 寫 /data/misc/qvop/qvop-log.txt（已在 file_contexts 給專屬型別）
+# init.qcom.rc 會 chown/chmod /data/misc/qvop
+allow vendor_init qvop_data_file:dir { search setattr };
+allow qvop-daemon qvop_data_file:dir rw_dir_perms;
+allow qvop-daemon qvop_data_file:file create_file_perms;
+
+# dpmd 的 dac_read_search —— 2026-09-24 一併拿掉觀察。
+# 同一輪查 dac_override 時，dpmd 那條已確認不再發生；這條當時還開著，
+# 所以「dpmd 乾淨」這個說法對它並不成立，要自己測一次才算數。
+# 下一輪開機若沒出現就永久刪掉，出現的話再照 fpseek 那套查它的 user/group。
+
+# 開機動畫也會試著開 debugfs 的 kgsl（bootanim 不在 appdomain 裡）
+dontaudit bootanim debugfs_kgsl:dir search;
+
+
+###########################################################################
+# ⚠ 又一次「自訂/改標屬性型別 = 拿掉所有人的讀取權」
+#
+# 第十二批把 ro.alarm_boot 從 default_prop 改標成 qcom 的
+# vendor_alarm_boot_prop，結果：
+#     avc: denied { read } for name="u:object_r:vendor_alarm_boot_prop:s0"
+#          scontext=u:r:system_server:s0   （time_daemon 也一樣）
+#
+# 前面已經為**自己宣告**的型別補過 get_prop，但這次是**沿用 qcom 的型別**，
+# 我的靜態檢查只掃自己宣告的 `type X, property_type;`，所以沒抓到。
+# tools/95 已改成掃 property_contexts 裡出現的所有型別。
+###########################################################################
+get_prop(domain, vendor_alarm_boot_prop)
+get_prop(domain, vendor_gpu_prop)
+get_prop(domain, wigig_prop)
+
+
+###########################################################################
+# 第十三批 —— enforcing 正式開機後才出現的
+#
+# netmgrd 在前一輪是**根本沒起來**（ctl.start$netmgrd 被擋），
+# 修好之後它 fork 出來的 ip6tables-wrapper 才碰得到這個。
+###########################################################################
+# avc: denied { read write } for comm="ip6tables-wrapp" path="socket:[...]"
+#      scontext=u:r:netutils_wrapper:s0 tcontext=u:r:netmgrd:s0 tclass=socket
+#
+# tcontext 是 **netmgrd 自己的 socket**——netmgrd exec ip6tables-wrapper 時
+# 沒有把那個 fd 設成 CLOEXEC，於是洩漏給了子行程。wrapper 只負責跑
+# iptables 命令，不需要也不該碰 netmgrd 的 socket，所以這裡**不開權限**，
+# 只關掉稽核。正解是 netmgrd 設 CLOEXEC，但那是閉源的 blob，改不了。
+#
+# ⚠ 尚未完全驗證：本機沒有 SIM，無法確認資料連線在擋掉之後仍正常。
+#   之後插卡測試時要回頭確認 —— 若 iptables 規則有問題再改成 allow。
+dontaudit netutils_wrapper netmgrd:socket { read write };

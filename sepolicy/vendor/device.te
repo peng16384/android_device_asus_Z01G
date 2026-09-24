@@ -1,0 +1,26 @@
+# 本機特有的裝置節點 type。
+
+# /dev/goodix_fp —— Goodix 指紋辨識器
+#
+# 沒有標記的話會落在通用的 `device` type 上，實測 denial：
+#     avc: denied { ioctl } for path="/dev/goodix_fp"
+#          scontext=u:r:init:s0 tcontext=u:object_r:device:s0
+# （scontext 是 init 而不是指紋網域，原因見 gx_fpd.te）
+type goodix_fp_device, dev_type;
+
+# /dev/asusRgbSensor —— ASUS 的 RGB／色溫感測器（libAsusRGBSensorHAL.so 用）
+# 實測沒標記，落在通用的 `device` type：
+#     avc: denied { ioctl } for path="/dev/asusRgbSensor"
+#          scontext=u:r:hal_camera_default:s0 tcontext=u:object_r:device:s0
+type asus_rgb_sensor_device, dev_type;
+
+# /dev/rk_preisp —— Rockchip RK1608 前置 ISP 協處理器
+# ZenFone 4 Pro 的雙鏡頭影像前處理走這顆（就是要 preisp_profiles.xml 的那個）。
+# 實測沒標記，落在通用的 `device` type：
+#     avc: denied { ioctl open read write } for path="/dev/rk_preisp"
+#          scontext=u:r:hal_camera_default:s0 tcontext=u:object_r:device:s0
+type asus_preisp_device, dev_type;
+
+# /dev/LaserSensor —— 雷射對焦（ASUS 的 laser_focus 驅動，配合
+# vendor/bin/LaserFocus_* 與 DIT_LaserOn 那幾支）
+type asus_laser_device, dev_type;

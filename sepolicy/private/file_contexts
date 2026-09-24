@@ -1,0 +1,8 @@
+# plat（系統側）政策的檔案標記。
+#
+# 這裡只放「必須引用 private 型別」的項目 —— 目前是 modem_country，
+# 因為它要碰的 smd7_device 是 qcom 在 private/ 定義的。
+# 其餘標記一律放 sepolicy/vendor/file_contexts。
+# 原因見 private/modem_country.te 末尾的說明。
+
+/(vendor|system/vendor)/bin/modem_country      u:object_r:modem_country_exec:s0

@@ -1,0 +1,344 @@
+#
+# system.prop for ASUS ZenFone 4 Pro (ZS551KL / Z01G)
+#
+
+# Platform
+ro.sf.lcd_density=480
+
+# Display（面板：Raydium RM67198 1080p command mode，單 DSI）
+debug.sf.hw=1
+debug.egl.hw=1
+debug.sf.latch_unsignaled=1
+debug.mdpcomp.logs=0
+dev.pm.dyn_samplingrate=1
+persist.hwc.mdpcomp.enable=true
+debug.sf.enable_hwc_vds=1
+
+# Media
+debug.stagefright.ccodec=0
+media.stagefright.enable-player=true
+media.stagefright.enable-http=true
+media.stagefright.enable-aac=true
+media.stagefright.enable-qcp=true
+media.stagefright.enable-scan=true
+mm.enable.smoothstreaming=true
+
+# Bluetooth（取自原廠 build.prop）
+#   SoC 是 cherokee（WCN3990）
+qcom.bluetooth.soc=cherokee
+persist.vendor.bt.a2dp_offload_cap=sbc-aptx-aptxhd-aac
+persist.bluetooth.disableabsvol=true
+bt.max.hfpclient.connections=1
+ro.bluetooth.emb_wp_mode=false
+ro.bluetooth.wipower=false
+ro.bluetooth.a4wp=false
+
+# QCOM
+persist.vendor.qcomsysd.enabled=1
+
+# RIL
+persist.radio.multisim.config=dsds
+ro.telephony.default_network=22,22
+persist.radio.apm_sim_not_pwdn=1
+persist.radio.sib16_support=1
+persist.radio.custom_ecc=1
+
+# Time
+persist.timed.enable=true
+
+# Wifi
+wifi.interface=wlan0
+wifi.supplicant_scan_interval=15
+
+# ---------------------------------------------------------------------------
+# Audio（整組取自原廠 15.0410.1911.117 的 build.prop）
+#
+# 為什麼要整組搬：原本一條都沒有，症狀是「有聲音但像通話音質」。
+# 最關鍵的是 audio.deep_buffer.media —— 缺了它，媒體會走
+# low-latency-playback 而不是 deep-buffer-playback，兩條路徑在 ADSP 上
+# 的 topology 與增益完全不同。修好後 logcat 可以看到
+#   select_devices for use case (deep-buffer-playback)
+# 而不是 (low-latency-playback)。
+# persist.audio.format.24bit 則讓 HAL 的 g_audio24bit 從 0 變 1。
+#
+# ⚠ 注意：ACDB 校正目錄的選擇「不」靠屬性，而是 libacdbloader.so 直接讀
+# ro.build.product（＝TARGET_DEVICE）當目錄名。原廠是 ZS551KL、我們是
+# Z01G，而 ro.* 屬性先設先贏、用 PRODUCT_PROPERTY_OVERRIDES 蓋不掉，
+# 所以是在 proprietary-files.txt 用 src:dst 把同一份 acdb 再以 Z01G 的
+# 名字裝一份（見 tools/31_build_blob_list.py 的 EXTRA_RENAMED）。
+# 沒做的話會退回 /vendor/etc/acdbdata/MTP/ —— 高通參考板的校正表。
+# ---------------------------------------------------------------------------
+vendor.audio_hal.period_size=192
+audio.deep_buffer.media=true
+persist.audio.format.24bit=true
+persist.audio.hifi.int_codec=true
+ro.audio.monitorRotation=true
+ro.audio.vibra.ring.vol.idx=5
+ro.asus.audio.dualSPK=true
+
+# Fluence（多麥克風降噪）
+ro.vendor.audio.sdk.fluencetype=none
+ro.vendor.audio.sdk.ssr=false
+persist.vendor.audio.fluence.voicecall=true
+persist.vendor.audio.fluence.voicerec=false
+persist.vendor.audio.fluence.speaker=true
+persist.vendor.audio.ras.enabled=false
+
+# Offload / 解碼器
+audio.offload.disable=0
+audio.offload.video=true
+vendor.audio.offload.buffer.size.kb=32
+vendor.audio.offload.track.enable=false
+vendor.audio.offload.multiaac.enable=true
+vendor.audio.offload.multiple.enabled=false
+vendor.audio.offload.passthrough=false
+vendor.audio.offload.gapless.enabled=true
+vendor.audio.offload.pstimeout.secs=3
+vendor.audio.tunnel.encode=false
+vendor.audio.safx.pbe.enabled=true
+vendor.audio.parser.ip.buffer.size=262144
+vendor.audio.flac.sw.decoder.24bit=true
+vendor.audio.use.sw.alac.decoder=true
+vendor.audio.use.sw.ape.decoder=true
+vendor.audio.hw.aac.encoder=true
+vendor.audio.noisy.broadcast.delay=600
+vendor.audio.dolby.ds2.enabled=false
+vendor.audio.dolby.ds2.hardbypass=false
+
+# ASUS AudioWizard（App 本身沒收，但音效 blob 會讀）
+audio.wizard.default.mode=smart
+ro.asus.audiowizard.outdoor=1
+
+# ---------------------------------------------------------------------------
+# 指紋辨識器 / 實體按鍵（取自原廠 build.prop）
+#
+# ############ persist.sys.fp.navigation 是實體 Home 鍵的開關 ############
+# 這台的 Home 鍵就是指紋辨識器，而 Goodix 的驅動自己不會產生 KEY_HOME ——
+# 要由使用者空間的 daemon 判斷成「一次 Home 輕觸」之後，再經 ioctl 叫驅動送鍵
+# （kernel: drivers/sensors/fingerprint/fphandle.c:1244 的 input_report_key）。
+#
+# 沒設這個屬性時，daemon 偵測得到按壓，但自己決定不送出：
+#   [sig_in_image  ] --------HOME KEY DOWN--------
+#   [sig_in_image  ] --------HOME KEY UP----------
+#   [device_send_key] key = 102, value = 0, g_send_key_flag = 0, send_key_flag = 1
+#   [device_send_key] g_send_key_flag & send_key_flag = 0        <- AND 起來是 0，不送
+# getevent 因此一個事件都收不到（同一顆 focal-touchscreen 上的 BACK 與
+# APP_SWITCH 都正常），表現就是「Home 鍵完全沒反應」。
+#
+# g_send_key_flag 的來源在 vendor/lib64/hw/gxfingerprint.default.so 與
+# libfpservice.so，strings 可見：
+#   FINGERPRINT_CMD_NAVIGATION_ENABLE / _DISABLE
+#   persist.sys.fp.navigation
+#   g_send_key_flag / g_ta_sensor_info.upper_navigation_support
+#   device_send_key(KEY_HOME, 1) / (KEY_BACK, ...) / (KEY_MENU, ...)
+#   "single click / double click / long press detect in Navigation"
+#
+# 原廠 build.prop 第 201 行就是 `persist.sys.fp.navigation = 2`。
+# 我們先前只從原廠 build.prop 搬了 audio 那一組，這條沒跟著過來。
+# （跟 g_DebugMode 之於耳機孔是同一個套路：ASUS 用屬性閘控硬體功能。）
+# #####################################################################
+# ---------------------------------------------------------------------------
+persist.sys.fp.navigation=2
+ro.hardware.fp_position=front_woh
+ro.hardware.fp_shape=rectangle
+persist.asus.fp.wakeup_support=true
+persist.asus.fp.wakeup=true
+ro.additionalbutton.operation=0
+
+# 3.5mm 耳機孔的模式：0 = 音訊（正常）、1 = UART 除錯序列埠
+#
+# kernel 的編譯預設是 1（wcd9335.c 的 int g_DebugMode = 1），而 MBHC 的
+# 插拔中斷處理在 g_DebugMode 為真時直接 goto exit，所以不設這個就等於
+# 「插耳機完全沒反應」。詳見 rootdir/etc/init.z01g.rc 的對應段落。
+#
+# 這裡給的是預設值；/system/etc/init.asus.checkaudbg.sh 會在開機後依
+# ro.boot.pre-ftm 再確認一次（工廠模式才會是 1）。
+# 需要 kernel console 除錯時：setprop persist.asus.audbg 1
+persist.asus.audbg=0
+
+# ===========================================================================
+# 以下整批補自原廠 15.0410.1911.117 的 build.prop
+#
+# 2026-09-23 做了一次完整比對：原廠 286 條 vs 我們 190 條（含 vendor 與
+# default.prop），**真正缺 150 條**。先前只搬了 audio 那一組，結果就是
+# persist.sys.fp.navigation（指紋 Home 鍵）這種東西一直沒被發現。
+#
+# 這一類缺失的共同特徵：**沒設不會報錯，只是默默用 runtime fallback**，
+# 跟 dalvik.vm.heap* 完全一樣。
+#
+# 挑選原則：
+#   收 —— 平台/圖形/效能/感測器/媒體/RIL 這類硬體相關，而且
+#         「屬性指向的檔案確實存在於我們的 build」
+#   不收 —— ASUS 自家 App 才會用的（optiflex、predict、asus.* 手勢、
+#           qxdmlog/logcat 除錯、setupwizard），以及 LineageOS 自己會設的
+#
+# 逐條驗過檔案是否存在（tools/40 那個教訓：不要宣告不存在的東西）：
+#   media_profiles_vendor.xml  有（42,580 bytes，原廠那份）
+#   libril-qc-qmi-1.so         有
+#   libqti-perfd-client.so     有
+#   libqti-at.so               有（在 /system/lib{,64}，已補進 blob 清單）
+#   nfc_nci.nqx.default.so     有
+#   frp 分割                   有（sda5）
+#   libqti-gt.so               **原廠映像裡也沒有** -> 不設 ro.vendor.gt_library
+# ===========================================================================
+
+# --- 圖形 / 顯示 -----------------------------------------------------------
+# ro.opengles.version 沒設的話，App 與 Play 商店無法正確判斷 GPU 能力
+# （196610 = 0x30002 = OpenGL ES 3.2）
+ro.opengles.version=196610
+ro.qualcomm.cabl=0
+debug.gralloc.enable_fb_ubwc=1
+persist.hwc.enable_vds=1
+sdm.debug.disable_skip_validate=1
+sdm.perf_hint_window=50
+vendor.display.enable_default_color_mode=1
+
+# HWUI 的各項快取大小（沒設就用 AOSP 的保守預設）
+ro.hwui.texture_cache_size=72
+ro.hwui.layer_cache_size=48
+ro.hwui.r_buffer_cache_size=8
+ro.hwui.path_cache_size=32
+ro.hwui.gradient_cache_size=1
+ro.hwui.drop_shadow_cache_size=6
+ro.hwui.texture_cache_flushrate=0.4
+ro.hwui.text_small_cache_width=1024
+ro.hwui.text_small_cache_height=1024
+ro.hwui.text_large_cache_width=2048
+ro.hwui.text_large_cache_height=4096
+
+# --- 效能 / 排程 -----------------------------------------------------------
+# libqti-perfd-client.so 是 QTI 的 perf HAL 用戶端，沒有這條就掛不上
+ro.vendor.extension_library=libqti-perfd-client.so
+ro.vendor.at_library=libqti-at.so
+ro.vendor.qti.core_ctl_min_cpu=2
+ro.vendor.qti.core_ctl_max_cpu=4
+ro.vendor.qti.sys.fw.bg_apps_limit=60
+sched.colocate.enable=1
+
+# --- 感測器 ---------------------------------------------------------------
+ro.vendor.sensors.dev_ori=true
+ro.vendor.sensors.dpc=true
+ro.vendor.sensors.mot_detect=true
+ro.vendor.sensors.multishake=true
+ro.vendor.sensors.pmd=true
+ro.vendor.sensors.sta_detect=true
+
+# --- 媒體 -----------------------------------------------------------------
+#
+# ############ media.settings.xml 不能直接指向原廠那份 ############
+# 原廠是 media.settings.xml=/vendor/etc/media_profiles_vendor.xml，
+# 那份 42 KB 的檔案確實抽進來了，也確實含有這顆相機正確的錄影解析度。
+# 但直接指過去會讓**整個系統開不了機**：
+#
+#   F MediaProfiles: frameworks/av/media/libmedia/MediaProfiles.cpp:329
+#                    CHECK(quality != -1) failed.
+#   F libc    : Fatal signal 6 (SIGABRT) in tid (main)
+#   init: Service 'zygote' received signal 6
+#
+# MediaProfiles 的解析跑在 **zygote 的 preload 階段**，而且遇到不認識的
+# quality 名稱是直接 abort（CHECK 不是警告）。zygote 死 -> 無限重啟。
+#
+# ASUS 那份用了 8 個 Qualcomm 擴充、AOSP 9 沒有定義的 quality：
+#   vga / 2k / 4kdci / qhd  與它們的 timelapse 版本
+# AOSP 9 的 sCamcorderQualityNameMap 只有：
+#   low high qcif cif 480p 720p 1080p 2160p qvga + timelapse* + highspeed*
+#
+# ⚠ 這跟 audio_policy_volumes.xml 的 HEADSET_nonEU 是**完全一樣的模式** ——
+#   ASUS 擴充了列舉值，AOSP 的解析器不認識。當初驗證時只確認了「檔案存在」，
+#   沒確認「內容能被 Pie 解析」，對於用 CHECK()/LOG_ALWAYS_FATAL 的設定檔
+#   那是不夠的。
+#
+# 已比照 audio_policy_volumes.xml 處理：tools/93_sanitize_media_profiles.py
+# 剔掉那 26 個區塊（88 -> 62），放在 configs/media/，由 device.mk 的
+# PRODUCT_COPY_FILES 蓋掉原廠那份（原廠版已在 tools/31 的 EXCLUDE_EXACT 排除）。
+# 每顆 cameraId 仍保有 MediaProfiles 必要的 low 與 high。
+# ################################################################
+media.settings.xml=/vendor/etc/media_profiles_vendor.xml
+mm.enable.qcom_parser=13630463
+mmp.enable.3g2=true
+media.aac_51_output_enabled=true
+qcom.hw.aac.encoder=true
+vidc.enc.dcvs.extra-buff-count=2
+af.fast_track_multiplier=1
+persist.mm.enable.prefetch=true
+vendor.fm.a2dp.conc.disabled=true
+vendor.voice.path.for.pcm.voip=true
+
+# --- 相機 -----------------------------------------------------------------
+# 刻意**不設** vendor.camera.aux.packagelist。
+#
+# LineageOS 的 CameraManager.getCameraIdList() / Camera.getNumberOfCameras()
+# 只要這個清單不是空的，清單以外的 App 就只看得到 id 0、1 —— id 2 起全部藏起來。
+# 原廠列的是 ASUS 自己的相機與工廠測試程式；我們一度照抄、換成 Snap，
+# 結果 Open Camera 不管選哪個 API 都只有主鏡頭與前鏡頭。
+#
+# 藏輔助相機是給「輔助鏡頭只能拿來算景深、不能單獨開」的機型用的。
+# 這台的 id 2 是一顆完整的望遠鏡頭（IMX351，5.54 mm，4672x3508）：
+# 2026-09-25 執行期清空這個屬性後，Open Camera 看得到第三顆、能預覽、
+# 能拍全解析度照片（EXIF 焦距 5.54 mm 核對過）。沒有理由只給特定 App 用。
+
+# --- RIL / 行動數據（沒有 SIM，尚未實測）----------------------------------
+# rild.libpath 沒設的話 rild 找不到 QMI 的實作，整個 RIL 起不來
+rild.libpath=/system/vendor/lib64/libril-qc-qmi-1.so
+ro.use_data_netmgrd=true
+ro.ril.ecclist=112,911
+persist.rmnet.data.enable=true
+persist.data.netmgrd.qos.enable=true
+persist.data.wda.enable=true
+persist.data.iwlan.enable=true
+persist.data.mode=concurrent
+persist.data.df.agg.dl_pkt=10
+persist.data.df.agg.dl_size=4096
+persist.data.df.dev_name=rmnet_usb0
+persist.data.df.dl_mode=5
+persist.data.df.ul_mode=5
+persist.data.df.mux_count=8
+persist.data.df.iwlan_mux=9
+persist.cne.feature=1
+persist.vendor.dpm.feature=11
+persist.vendor.radio.add_power_save=1
+persist.vendor.radio.rat_on=combine
+persist.vendor.radio.sib16_support=1
+persist.radio.VT_ENABLE=1
+persist.radio.VT_HYBRID_ENABLE=1
+persist.radio.VT_CAM_INTERFACE=1
+persist.radio.flexmap_type=none
+#
+# 刻意**不**收的 RIL 相關：
+#   telephony.lteOnCdmaDevice=1  原廠有設，但這會讓 framework 把裝置當成
+#                                CDMA+LTE。WW 版是 GSM/WCDMA/LTE，沒有 SIM
+#                                無法驗證，設錯會影響撥號與網路註冊。
+#   ril.subscription.types=RUIM,RUIM   同上，RUIM 是 CDMA 的 SIM 型態。
+#   persist.vendor.radio.custom_ecc=0  與我們既有的 persist.radio.custom_ecc=1
+#                                      衝突，等有 SIM 可測再決定。
+#   ro.com.android.dataroaming=true    預設開啟數據漫遊有資費風險，
+#                                      交給使用者自己決定。
+#   persist.rild.nitz_*                值是空的，那是執行期狀態不是設定。
+
+# --- 其他系統 -------------------------------------------------------------
+# ro.frp.pst 是「恢復原廠設定保護」要用的分割區路徑（本機 frp -> sda5）
+ro.frp.pst=/dev/block/bootdevice/by-name/frp
+drm.service.enabled=true
+persist.fuse_sdcard=true
+ro.config.screen_timeout_max=600000
+sys.vendor.shutdown.waittime=500
+
+# --- NFC（bring-up 期間 HAL 是停用的，屬性先備好）-------------------------
+ro.hardware.nfc_nci=nqx.default
+ro.nfc.port=I2C
+persist.nfc.smartcard.config=SIM1
+
+# --- IMS / VoLTE ----------------------------------------------------------
+# 照 LineageOS 16.0 的 OnePlus msm8998 樹（vendor_prop.mk）。
+# *_avail_ovr 是「不管 carrier config 怎麼說都當作可用」的覆寫旗標，
+# 在沒有對應 carrier config 的移植上通常是必要的。
+# persist.radio.calls.on.ims 讓 RIL 把語音通話交給 IMS 而不是 CS。
+persist.dbg.ims_volte_enable=1
+persist.dbg.volte_avail_ovr=1
+persist.dbg.vt_avail_ovr=1
+persist.dbg.wfc_avail_ovr=1
+persist.radio.calls.on.ims=1
+# 視訊通話的相機介面（原廠 getprop 本來就有這三條，一併帶上）
+persist.radio.VT_CAM_INTERFACE=1
+persist.radio.VT_ENABLE=1
+persist.radio.VT_HYBRID_ENABLE=1

@@ -1,0 +1,44 @@
+# goodixfp.kl —— 照抄原廠 /system/usr/keylayout/goodixfp.kl，只省略一行。
+#
+# 原廠內容（352 bytes，從 system.img 讀出）：
+#     key 187    HOME                     VIRTUAL
+#     key 188    HOME                     VIRTUAL
+#     key 189    HOME                     VIRTUAL
+#     key 190    HOME                     VIRTUAL
+#     key 191    HOME                     VIRTUAL
+#     key 192    FINGERPRINT_EARLYWAKEUP  GESTURE     <-- 唯一不是 HOME 的
+#     key 193    HOME                     VIRTUAL
+#     key 102    HOME                     VIRTUAL
+#
+# ###########################################################################
+# ⚠ key 192 必須省略，不能映射成 HOME。
+#
+# kernel 的 drivers/sensors/fingerprint/fphandle.c 的手勢對應表：
+#     { "UP",        FRINGERPRINT_SWIPE_UP,   KEY_F17 }   187
+#     { "DOWN",      FRINGERPRINT_SWIPE_DOWN, KEY_F18 }   188
+#     { "LEFT",      ...                      KEY_F19 }   189
+#     { "RIGHT",     ...                      KEY_F20 }   190
+#     { "TAP",       FRINGERPRINT_TAP,        KEY_F21 }   191
+#     { "DTAP",      FRINGERPRINT_DTAP,       KEY_F22 }   192   <-- 雙擊
+#     { "LONGPRESS", FRINGERPRINT_LONGPRESS,  KEY_F23 }   193
+#
+# **登錄指紋時，驅動每偵測到一次手指就送 192**（實測 getevent）。
+# 早先這個檔案把 192 也映射成 HOME，結果登錄畫面每碰一次就被 Home 踢出去，
+# 於是永遠註冊不了指紋 —— 而沒有指紋註冊時感測器又會進 GF_SLEEP_MODE
+# 不送任何鍵，Home 鍵也跟著死掉。那是個死結，而且是這個檔案造成的。
+#
+# 原廠把 192 對應到 ASUS 自己加的 FINGERPRINT_EARLYWAKEUP + GESTURE 旗標。
+# 那個 keycode 標籤 AOSP 不認得，而 KeyLayoutMap.cpp 的 parseKey() 遇到
+# 不認得的標籤會 return BAD_VALUE、**整個檔案作廢**退回 Generic.kl，
+# 所以不能照抄 —— 直接把這一行省掉，讓 192 沒有對應（InputReader 會忽略它）。
+#
+# 要支援那些手勢的話，正規做法是寫 device key handler 接原始 scancode。
+# ###########################################################################
+
+key 187    HOME                     VIRTUAL
+key 188    HOME                     VIRTUAL
+key 189    HOME                     VIRTUAL
+key 190    HOME                     VIRTUAL
+key 191    HOME                     VIRTUAL
+key 193    HOME                     VIRTUAL
+key 102    HOME                     VIRTUAL

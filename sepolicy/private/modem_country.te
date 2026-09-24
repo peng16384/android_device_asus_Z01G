@@ -1,0 +1,35 @@
+# modem_country —— 依國家碼設定 modem
+#
+# init.qcom.rc：
+#     service modem-check /system/vendor/bin/modem_country
+#         class late_start   user bluetooth   group net_bt   disabled   oneshot
+#
+# 跑 bluetooth uid、net_bt group 是因為它走 /dev/smd7（共享記憶體裝置，
+# 節點權限就是 bluetooth:net_bt）。之前沒有 exec type，跑在 init 網域：
+#     avc: denied { write ioctl } for path="/dev/smd7" scontext=u:r:init:s0
+
+type modem_country, domain;
+type modem_country_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(modem_country)
+
+allow modem_country smd7_device:chr_file rw_file_perms;
+
+###########################################################################
+# ⚠ 為什麼這個檔案在 private/ 而不是 vendor/
+#
+# `smd7_device` 定義在 device/qcom/sepolicy/**private**/device.te，
+# 也就是 plat（系統側）政策。Treble 把政策切成 public / private / vendor
+# 三塊分別編譯：**vendor 的 .te 只看得到 public 匯出的型別**，
+# 看不到 private 的。放在 vendor/ 會得到
+#
+#     modem_country.te:15:ERROR 'unknown type smd7_device'
+#
+# 而 /dev/smd7 的標記本身也在 qcom 的 private/file_contexts，我們不能
+# 從 vendor 側重新標記它（兩條同樣精確的規則會互相打架）。
+#
+# 所以整個網域——型別宣告、file_contexts、規則——都放在 private/。
+# qcom 自己的 dun-server 用的就是同一個做法（它也要碰 smd7_device）。
+#
+# 本機是非 Treble，這個切割對我們只是形式上的，但既然工具鏈照著檢查，
+# 就照規則放。
+###########################################################################
