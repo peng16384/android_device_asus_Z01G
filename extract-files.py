@@ -111,6 +111,25 @@ for _path, _conf in (('voicemmode1-call speaker', 24), ('voicemmode2-call speake
         r'\2<ctl name="Stereo DSPChl Setup" value="DevA-MonoMix-DevB-MonoMix" />\3' % _conf,
     )
 
+# NFC（2026-09-28）：ASUS 的 libnfc-nxp.conf（原廠 libnfc-mtp_default.conf，tools/125 改名安裝）是 Oreo 的格式，
+# 那時這些鍵由 NFC 堆疊自己讀 libnfc-nci.conf；Android 15 改向 HAL 要（pn8x 的 phNxpNciHal_getVendorConfig
+# 從 libnfc-nxp.conf 讀）—— 缺了 NFA_PROPRIETARY_CFG，MIFARE Classic 的協定代碼（第 6 個，0x80）就是「不支援」：
+# 悠遊卡偵測得到，但 libnfc_nci 報 "unknown protocol"、框架 "Unknown tech type -1"，不交給任何 App。
+# 值照 OnePlus 5（同樣是帶 eSE 的 NXP：PN80T）；ASUS 原本的 RF / 天線參數一行都不動
+for _line in ('NFA_PROPRIETARY_CFG={05, FF, FF, 06, 81, 80, 70, FF, FF}',
+              'NFA_POLL_BAIL_OUT_MODE=0x01',
+              'ISO_DEP_MAX_TRANSCEIVE=0xFEFF',
+              'PRESENCE_CHECK_ALGORITHM=2',
+              'DEFAULT_ROUTE=0x01',
+              'DEFAULT_OFFHOST_ROUTE=0x01',
+              'DEFAULT_NFCF_ROUTE=0x01',
+              'DEFAULT_SYS_CODE_ROUTE=0xC0',
+              'DEFAULT_SYS_CODE_PWR_STATE=0x1B',
+              'DEVICE_HOST_WHITE_LIST={80:81:C0}',
+              'OFF_HOST_ESE_PIPE_ID=0x19',
+              'OFF_HOST_SIM_PIPE_ID=0x70'):
+    asus_blob_fixups.setdefault('vendor/etc/libnfc-nxp.conf', blob_fixup()).add_line_if_missing(_line)
+
 
 def asus_fixup(path: str) -> blob_fixup:
     """同一個檔只能有一組 fixup —— 已有的就接著疊（例：libfp_client 同時要 remove_needed 與 libstdc++）"""

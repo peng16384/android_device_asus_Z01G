@@ -2667,7 +2667,7 @@ system/lib/libtrueportrait.so
 system/usr/idc/focal-touchscreen.idc
 system/usr/keychars/focal-touchscreen.kcm
 
-# 改名安裝（20）—— ACDB 以 Z01G 再裝一份、ASUS 的 mixer_paths 裝成 tasha（見 tools/125）
+# 改名安裝（22）—— ACDB 以 Z01G 再裝一份、ASUS 的 mixer_paths 裝成 tasha（見 tools/125）
 vendor/etc/acdbdata/ZS551KL/ZS551KL_Bluetooth_cal.acdb:vendor/etc/acdbdata/Z01G/Z01G_Bluetooth_cal.acdb;TRYSRCFIRST
 vendor/etc/acdbdata/ZS551KL/ZS551KL_General_cal.acdb:vendor/etc/acdbdata/Z01G/Z01G_General_cal.acdb;TRYSRCFIRST
 vendor/etc/acdbdata/ZS551KL/ZS551KL_Global_cal.acdb:vendor/etc/acdbdata/Z01G/Z01G_Global_cal.acdb;TRYSRCFIRST
@@ -2688,3 +2688,5 @@ system/etc/mixer_paths_ZS551KL.xml:vendor/etc/mixer_paths_tasha.xml;TRYSRCFIRST
 system/etc/init.asus.audbg.sh:vendor/bin/init.asus.audbg.sh;TRYSRCFIRST
 system/etc/init.asus.checkaudbg.sh:vendor/bin/init.asus.checkaudbg.sh;TRYSRCFIRST
 system/etc/preisp_profiles.xml:vendor/etc/preisp.xml;TRYSRCFIRST
+vendor/firmware/libpn548ad_fw.so:vendor/lib64/libpn548ad_fw.so;TRYSRCFIRST
+vendor/etc/libnfc-mtp_default.conf:vendor/etc/libnfc-nxp.conf;TRYSRCFIRST

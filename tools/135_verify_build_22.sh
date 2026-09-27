@@ -215,6 +215,18 @@ echo "=== 日常版 ==="
 chk "bring-up 的 log 管道已拿掉（init.z01g-debug.rc / z01g-snap.sh 會每次開機往 /data 寫 log）" \
     "[ ! -e '$O/system/vendor/etc/init/init.z01g-debug.rc' ] && [ ! -e '$O/system/vendor/bin/z01g-snap.sh' ]"
 
+echo "=== NFC ==="
+chk "NFC HAL（hardware/nxp/nfc/pn8x 原始碼編）有裝" "[ -x '$O/system/vendor/bin/hw/android.hardware.nfc@1.2-service' ]"
+chk "PN548 韌體在 HAL 找的 /vendor/lib64（原廠放 vendor/firmware，tools/125 改名安裝）" "[ -s '$O/system/vendor/lib64/libpn548ad_fw.so' ]"
+chk "libnfc-nxp.conf 是 ASUS 的 mtp_default（NXP_NFC_CHIP=0x04、PN548 韌體）" \
+    "grep -q '^NXP_NFC_CHIP=0x04' '$O/system/vendor/etc/libnfc-nxp.conf' && grep -q '^NXP_FW_NAME=\"libpn548ad_fw.so\"' '$O/system/vendor/etc/libnfc-nxp.conf'"
+chk "libnfc-nxp.conf 有 NFA_PROPRIETARY_CFG 且 MIFARE 協定是 0x80（extract-files.py 補的；少了悠遊卡這類 MIFARE Classic 卡讀不到）" \
+    "grep -qE '^NFA_PROPRIETARY_CFG=\{([0-9A-F]{2}, ){5}80,' '$O/system/vendor/etc/libnfc-nxp.conf'"
+chk "libnfc-nci.conf、NFC 的 feature（android.hardware.nfc.xml）都有裝" \
+    "[ -s '$O/system/vendor/etc/libnfc-nci.conf' ] && [ -s '$O/system/vendor/etc/permissions/android.hardware.nfc.xml' ]"
+chk "manifest 宣告 android.hardware.nfc@1.2 與 vendor.nxp.nxpnfc（強制 VINTF：沒宣告就找不到）" \
+    "grep -q 'android.hardware.nfc' '$O/system/vendor/etc/vintf/manifest.xml' && grep -q 'vendor.nxp.nxpnfc' '$O/system/vendor/etc/vintf/manifest.xml'"
+
 echo "=== adb ==="
 chk "recovery 有設 ro.serialno（bootloader 不給；空的話 Windows 的 adb 讀不到 USB 序號、連 sideload 都不能用）" \
     "grep -q '^ *setprop ro.serialno [^ ]' '$O/recovery/root/init.recovery.qcom.rc'"

@@ -493,7 +493,16 @@ def main():
     renamed += [('system/etc/init.asus.audbg.sh', 'vendor/bin/init.asus.audbg.sh'),
                 ('system/etc/init.asus.checkaudbg.sh', 'vendor/bin/init.asus.checkaudbg.sh'),
                 ('system/etc/preisp_profiles.xml', 'vendor/etc/preisp.xml')]
-    have = {'vendor/' + r for r in vendor} | {'system/' + r for r in system}
+    # NFC（2026-09-28）：HAL 用 LineageOS 原始碼的 hardware/nxp/nfc/pn8x（android.hardware.nfc@1.2-service，
+    # 同 OnePlus 5），原廠 QTI 的 NQ HAL 照舊排除（規則 3）。只從 ASUS 拿兩樣：
+    # - 韌體：晶片是 PN548（原廠 persist.nfc.fw.version=10.1.22；PN553 是 11.x）。pn8x HAL 從
+    #   FW_LIB_ROOT_DIR = /vendor/lib64/<NXP_FW_NAME> 載入，原廠放在 vendor/firmware -> 改名裝到 lib64
+    # - libnfc-nxp.conf：原廠 NQ HAL 依 /sys/devices/soc0/hw_platform（本機 MTP）與晶片選
+    #   libnfc-mtp_default.conf（mtp_rf1 / rf2 與它只差空白行）：NXP_NFC_CHIP=0x04（PN66T = PN548 + eSE）、
+    #   RF / 天線參數是 ASUS 調的，所以用原廠這份、不用 OnePlus 的
+    renamed += [('vendor/firmware/libpn548ad_fw.so', 'vendor/lib64/libpn548ad_fw.so'),
+                ('vendor/etc/libnfc-mtp_default.conf', 'vendor/etc/libnfc-nxp.conf')]
+    have ={'vendor/' + r for r in vendor} | {'system/' + r for r in system}
     missing_ren = [s for s, _ in renamed if s not in have]
     if missing_ren:
         sys.exit('!!! 改名來源不存在：%s' % missing_ren)

@@ -7,7 +7,7 @@
 # 骨架：OnePlus msm8998-common 的 common.mk（見 ORIGIN.md）+ dumpling 的 device.mk。
 # 拿掉的 OnePlus 專屬：OnePlusDoze、IFAA、Pocket mode、Tri-state-key、LiveDisplay、
 # librecovery_updater_oneplus、hardware/oneplus、libinit_oneplus、觸控 HAL。
-# 先拿掉、之後再評估：ANT+（這台沒有）、NFC（16.0 也停用）。
+# 先拿掉：ANT+（這台沒有）。NFC 2026-09-28 補回（見下面 NFC 一節）。
 # TODO(Z01G)：標記的地方要換成 ASUS 的內容（音訊設定、media profiles、振動…）。
 
 # Add common definitions for Qualcomm
@@ -53,6 +53,23 @@ PRODUCT_ENFORCE_RRO_TARGETS += *
 ifneq ($(wildcard packages/apps/Updater/app/src/main/java/org/evolution),)
 PRODUCT_PACKAGES += Z01GEvolutionUpdaterOverlay
 endif
+
+# NFC（NXP PN548 + eSE，kernel 的 nq-nci 驅動、/dev/nq-nci）—— 照 OnePlus 5：HAL 用 LineageOS 原始碼的
+# hardware/nxp/nfc/pn8x，不用原廠 QTI 的 NQ HAL（Oreo 的 vendor.nxp.hardware.nfc@1.0）。
+# 韌體 libpn548ad_fw.so 與 libnfc-nxp.conf（ASUS 的 libnfc-mtp_default.conf）是 blob（tools/125 的改名安裝）；
+# libnfc-nci.conf 是 OnePlus 的通用版。NFC 應用本身是 APEX（com.android.nfcservices），看到下面的 feature 才會啟動
+PRODUCT_PACKAGES += \
+    android.hardware.nfc@1.2-service \
+    com.android.nfc_extras \
+    Tag
+
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/configs/nfc/libnfc-nci.conf:$(TARGET_COPY_OUT_VENDOR)/etc/libnfc-nci.conf \
+    frameworks/native/data/etc/android.hardware.nfc.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.xml \
+    frameworks/native/data/etc/android.hardware.nfc.hce.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.hce.xml \
+    frameworks/native/data/etc/android.hardware.nfc.hcef.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.hcef.xml \
+    frameworks/native/data/etc/com.android.nfc_extras.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/com.android.nfc_extras.xml \
+    frameworks/native/data/etc/com.nxp.mifare.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/com.nxp.mifare.xml
 
 # Partitions
 PRODUCT_PACKAGES += \

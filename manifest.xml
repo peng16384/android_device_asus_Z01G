@@ -420,6 +420,25 @@
             <instance>imsrtpservice</instance>
         </interface>
     </hal>
+    <!-- NFC（2026-09-28）：hardware/nxp/nfc/pn8x 的 android.hardware.nfc@1.2-service 同時註冊這兩個（同 OnePlus 5） -->
+    <hal format="hidl">
+        <name>android.hardware.nfc</name>
+        <transport>hwbinder</transport>
+        <version>1.2</version>
+        <interface>
+            <name>INfc</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+    <hal format="hidl">
+        <name>vendor.nxp.nxpnfc</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>INxpNfc</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
     <!-- 22.2 拿掉的（宣告了但沒人註冊 = 客戶端無限等待，16.0 教訓 3）：
          vendor.qti.esepowermanager（eSE 沒收）、vendor.qti.hardware.fm（FM 沒收）、
          vendor.qti.hardware.soter（Soter 沒收）、vendor.qti.hardware.sensorscalibrate（只有介面庫，沒有實作）
