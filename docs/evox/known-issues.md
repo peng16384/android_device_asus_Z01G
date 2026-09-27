@@ -2,8 +2,9 @@
 
 > **English summary** — Everything listed for the LineageOS 22.2 build applies
 > here too (same device tree, kernel and vendor files): see
-> [`../22.2/known-issues.md`](../22.2/known-issues.md) — notably Widevine L3 (NFC
-> works since `evox-10.21-v1.1`). Specific to Evolution X:
+> [`../22.2/known-issues.md`](../22.2/known-issues.md) — notably **user data
+> (`/data`) is not encrypted** and Widevine is L3 only (NFC works since
+> `evox-10.21-v1.1`). Specific to Evolution X:
 >
 > - Google apps are the **mini** set: Google Photos, Recorder, ARCore, Pixel live
 >   wallpapers and a few other Pixel extras are not included (most can be
@@ -18,7 +19,8 @@
 > *The body is in Traditional Chinese.*
 
 **LineageOS 22.2 版的已知問題這裡全部適用**（同一棵 device tree、同一顆 kernel、同一批 vendor 檔）：
-見 [`../22.2/known-issues.md`](../22.2/known-issues.md)，主要是 Widevine 只有 L3（NFC 從 `evox-10.21-v1.1` 起可以用）。
+見 [`../22.2/known-issues.md`](../22.2/known-issues.md)，主要是 **使用者資料（`/data`）沒有加密**
+（「信任」頁面顯示「加密：已停用」）與 Widevine 只有 L3（NFC 從 `evox-10.21-v1.1` 起可以用）。
 
 其中「沒裝 GApps 就只有 GPS 定位」這一條**不適用**：Evolution X 內建 Google 服務，網路定位由它提供。
 

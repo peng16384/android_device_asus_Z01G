@@ -2,6 +2,11 @@
 
 > **English summary** — Known issues and limitations of the 22.2 build.
 >
+> - **User data (`/data`) is not encrypted** (the Trust page in Settings shows
+>   "Encryption: Disabled"). A screen lock does not protect your
+>   files if someone has the phone: with the unlocked bootloader they can boot a
+>   recovery and read `/data` without your PIN. This is a known risk and is not
+>   planned to change; turning encryption on later would require wiping data.
 > - **Widevine is L3 only** (streaming apps limit you to SD). The device's
 >   keybox is rejected by TrustZone even with every stock ASUS component; this is
 >   not caused by the port.
@@ -20,6 +25,22 @@
 > *The body is in Traditional Chinese.*
 
 ## 限制
+
+### 使用者資料（`/data`）沒有加密
+
+設定裡的「信任」頁面會顯示 **「加密：已停用」**。
+
+意思是照片、App 資料、帳號登入資訊都以明文存在儲存空間裡。日常使用沒有差別，
+但**螢幕鎖只擋得住操作手機，擋不住直接讀儲存空間**：這台的 bootloader 是解鎖的，
+手機落到別人手上時，對方可以開進 recovery 或刷自己的映像，不需要你的密碼就能讀出 `/data`。
+
+原因：原廠（Android 8）用的是整區加密（FDE），Android 13 起系統已經不支援；
+新的以檔案為單位加密（FBE）在移植時沒有開。kernel 本身具備 FBE 需要的功能，
+但開啟後**所有人都必須清除資料**才能改成加密，而且要重新驗證 TrustZone 那一段，
+目前**不打算處理，列為已知風險**。
+
+比較在意手機遺失風險的話：避免在這台上存放敏感資料，
+並確認 Google 帳號等服務可以從別的裝置遠端登出。
 
 ### Widevine 只有 L3
 
