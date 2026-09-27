@@ -19,12 +19,24 @@
 #   環境       env -i 只放必要變數（WSL 的 PATH 接著 Windows 的 /mnt/c/Users/<帳號>/...）
 set -e -o pipefail
 
-SRC_REAL=${SRC_REAL:-$HOME/lineage-22.2}
-SRC=${SRC:-/src/lineage-22.2}
+# ROM=lineage（預設）或 ROM=evox（Evolution X vic，~/evox-vic，tools/153 / 154）
+# 兩者用同一棵 device tree、同一顆 kernel、同一套私鑰；差別只在原始碼樹、私鑰目錄、lunch 方式、目標與 zip 名稱
+ROM=${ROM:-lineage}
+case "$ROM" in
+    lineage) D_REAL=$HOME/lineage-22.2; D_SRC=/src/lineage-22.2; KEYS=vendor/lineage-priv/keys
+             LUNCH="breakfast Z01G"; D_TARGET=bacon; ZIPGLOB='lineage-22.2-*-UNOFFICIAL-Z01G.zip' ;;
+    evox)    D_REAL=$HOME/evox-vic; D_SRC=/src/evox-vic; KEYS=vendor/evolution-priv/keys
+             LUNCH="lunch lineage_Z01G-bp1a-userdebug"; D_TARGET=evolution; ZIPGLOB='EvolutionX-*-Z01G-*.zip' ;;
+    *) echo "!!! ROM=$ROM（lineage 或 evox）" >&2; exit 1 ;;
+esac
+SRC_REAL=${SRC_REAL:-$D_REAL}
+SRC=${SRC:-$D_SRC}
 OUTD=${OUTD:-$SRC/out-release}
 PROJ=${PROJ:-$(cd "$(dirname "$(realpath "$0")")/.." && pwd)}   # device tree 的根目錄
 B_USER=${B_USER:-android-build}
 B_HOST=${B_HOST:-localhost}
+# 只編部分目標（例如測 kernel：MKA_TARGET=bootimage），環境與中性化和正式發布版完全相同
+MKA_TARGET=${MKA_TARGET:-$D_TARGET}
 CLEAN_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 if [ "${1:-}" = "--inner" ]; then
@@ -39,25 +51,29 @@ if [ "${1:-}" = "--inner" ]; then
     export KBUILD_BUILD_USER="$B_USER" KBUILD_BUILD_HOST="$B_HOST"
     set +e
     source build/envsetup.sh >/dev/null 2>&1
-    breakfast Z01G >/dev/null 2>&1 || { echo "!!! breakfast 失敗" >&2; exit 1; }
+    $LUNCH >/dev/null 2>&1 || { echo "!!! $LUNCH 失敗" >&2; exit 1; }
     set -e
     echo "  TARGET_PRODUCT=$TARGET_PRODUCT  變體=$TARGET_BUILD_VARIANT  OUT_DIR=$OUT_DIR  BUILD_NUMBER=$BUILD_NUMBER"
     date '+  開始 %F %T'
-    mka bacon > "$OUTD.log" 2>&1 || {
+    echo "  目標：$MKA_TARGET"
+    mka $MKA_TARGET > "$OUTD.log" 2>&1 || {
         echo "!!! 編譯失敗，見 $OUTD.log" >&2
         grep -nE "^(FAILED|ninja: error|error:)" "$OUTD.log" | head -20 >&2
         exit 1; }
     date '+  結束 %F %T'
-    ls -lh "$OUTD"/target/product/Z01G/lineage-22.2-*-UNOFFICIAL-Z01G.zip
+    if [ "$MKA_TARGET" = "$D_TARGET" ]; then ls -lh "$OUTD"/target/product/Z01G/$ZIPGLOB
+    else ls -lh "$OUTD"/target/product/Z01G/*.img; fi
     exit 0
 fi
 
 echo "=== 0. 私鑰與原始碼樹 ==="
-[ -f "$SRC_REAL/vendor/lineage-priv/keys/keys.mk" ] && [ -f "$SRC_REAL/vendor/lineage-priv/keys/releasekey.pk8" ] \
-    || { echo "!!! vendor/lineage-priv/keys 沒有私鑰（tools/145）—— 不編 test-keys 的發布版"; exit 1; }
-echo "  releasekey：$(openssl x509 -in "$SRC_REAL/vendor/lineage-priv/keys/releasekey.x509.pem" -noout -fingerprint -sha256 | cut -d= -f2 | cut -c1-23)…"
-bash "$PROJ/tools/123_place_tree_22.sh" | tail -1
-bash "$PROJ/tools/136_apply_patches_22.sh"
+echo "  ROM=$ROM  原始碼樹=$SRC_REAL"
+[ -f "$SRC_REAL/$KEYS/keys.mk" ] && [ -f "$SRC_REAL/$KEYS/releasekey.pk8" ] \
+    || { echo "!!! $KEYS 沒有私鑰（tools/145、evox 是 tools/154）—— 不編 test-keys 的發布版"; exit 1; }
+echo "  releasekey：$(openssl x509 -in "$SRC_REAL/$KEYS/releasekey.x509.pem" -noout -fingerprint -sha256 | cut -d= -f2 | cut -c1-23)…"
+# SRC 要明講：這裡的 $SRC 是 /src 的 bind mount 路徑，沒 export；不傳的話 123 / 136 會退回預設的 ~/lineage-22.2
+SRC="$SRC_REAL" bash "$PROJ/tools/123_place_tree_22.sh" | tail -1
+SRC="$SRC_REAL" bash "$PROJ/tools/136_apply_patches_22.sh"
 
 echo "=== 1. bind mount $SRC_REAL -> $SRC ==="
 sudo mkdir -p "$SRC"
@@ -72,9 +88,9 @@ sudo unshare --uts -- sh -c '
     exec sudo -u "$2" -H env -i \
         PATH="$3" HOME="$4" LANG=C.UTF-8 TERM=dumb \
         USER="$5" LOGNAME="$5" CCACHE_DIR="$4/.ccache" \
-        SRC="$6" OUTD="$7" B_USER="$5" B_HOST="$1" \
+        SRC="$6" OUTD="$7" B_USER="$5" B_HOST="$1" MKA_TARGET="$9" ROM="${10}" \
         bash "$8" --inner
-' _ "$B_HOST" "$(id -un)" "$CLEAN_PATH" "$HOME" "$B_USER" "$SRC" "$OUTD" "$SELF"
+' _ "$B_HOST" "$(id -un)" "$CLEAN_PATH" "$HOME" "$B_USER" "$SRC" "$OUTD" "$SELF" "$MKA_TARGET" "$ROM"
 
 echo
 echo "完成。接著："

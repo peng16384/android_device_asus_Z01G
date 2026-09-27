@@ -19,12 +19,18 @@
 # 16.0 的 tools/107 用 unzip 解，22.2 的 zip unzip 讀不了（列出 0 個檔）-> 改用 Python zipfile。
 set -e -o pipefail
 
-SRC=${SRC:-$HOME/lineage-22.2}
+# ROM=lineage（預設）或 ROM=evox（Evolution X vic）—— 只差預設路徑、zip 名稱與 OTA 網址的檢查方式
+ROM=${ROM:-lineage}
+case "$ROM" in
+    lineage) SRC=${SRC:-$HOME/lineage-22.2}; ZIPGLOB='lineage-22.2-*-UNOFFICIAL-Z01G.zip' ;;
+    evox)    SRC=${SRC:-$HOME/evox-vic};     ZIPGLOB='EvolutionX-*-Z01G-*.zip' ;;
+    *) echo "!!! ROM=$ROM（lineage 或 evox）"; exit 1 ;;
+esac
 K=${KEYDIR:-$HOME/.android-certs}
 PII=${PII:-$HOME/pii}
 PROJ=${PROJ:-$(cd "$(dirname "$(realpath "$0")")/.." && pwd)}   # device tree 的根目錄
-ZIP=${1:-$(ls -t "$SRC"/out-release/target/product/Z01G/lineage-22.2-*-UNOFFICIAL-Z01G.zip 2>/dev/null | head -1)}
-H=$SRC/out/host/linux-x86
+ZIP=${1:-$(ls -t "$SRC"/out-release/target/product/Z01G/$ZIPGLOB 2>/dev/null | head -1)}
+H=${HOSTOUT:-$SRC/out-release/host/linux-x86}   # 主機工具（apksigner、brotli）；開發用的 out/ 已刪（2026-09-27）
 # apksigner 是 java 程式，WSL 裡沒有系統的 java -> 用原始碼樹內附的 JDK
 # （2026-09-27：沒這行時 apksigner 靜靜失敗，空輸出被判成「不是我們的金鑰」）
 export PATH="$SRC/prebuilts/jdk/jdk21/linux-x86/bin:$PATH"
@@ -40,7 +46,9 @@ W=$(mktemp -d "$HOME/relcheck.XXXX")
 trap 'mountpoint -q "$W/m" && sudo umount "$W/m"; rm -rf "$W"' EXIT
 cd "$W"
 python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('z')" "$ZIP"
-"$H/bin/brotli" -d z/system.new.dat.br -o system.new.dat
+# LineageOS 的 zip 放 brotli 壓過的 system.new.dat.br；Evolution X 的放未壓縮的 system.new.dat（靠 zip 本身壓）
+if [ -f z/system.new.dat.br ]; then "$H/bin/brotli" -d z/system.new.dat.br -o system.new.dat
+else mv z/system.new.dat system.new.dat; fi
 python3 "$PROJ/tools/105_sdat2img.py" z/system.transfer.list system.new.dat system.img >/dev/null
 rm -f system.new.dat
 mkdir m && sudo mount -o ro,loop system.img m
@@ -70,11 +78,28 @@ BP=build.prop
 prop() { grep -m1 "^$1=" "$BP" | cut -d= -f2-; }
 [ "$(prop ro.build.tags)" = release-keys ] && ok "ro.build.tags=release-keys" || bad "ro.build.tags=$(prop ro.build.tags)"
 [ "$(prop ro.build.user)" = android-build ] && ok "ro.build.user=android-build" || bad "ro.build.user 不是 android-build"
-[ "$(prop ro.build.host)" = localhost ] && ok "ro.build.host=localhost" || bad "ro.build.host 不是 localhost"
+bh=$(prop ro.build.host)
+if [ "$bh" = localhost ]; then ok "ro.build.host=localhost"
+elif [ "$ROM" = evox ] && echo "$bh" | grep -qE '^r-[0-9a-f]{16}-[a-z0-9]{4}$'; then
+    # Evolution X 的 envsetup.sh（generate_host_overrides）每次建置用亂數產生 Google 建置伺服器格式的假主機名稱，
+    # 蓋過我們 UTS namespace 的 localhost —— 是隨機值、與這台電腦無關（2026-09-28 查過來源）
+    ok "ro.build.host=$bh（Evolution X 每次亂數產生的假主機名稱）"
+else bad "ro.build.host=$bh（不是 localhost）"; fi
 echo "        display.id = $(prop ro.build.display.id)"
-echo "        ro.build.date.utc = $(prop ro.build.date.utc)   ro.lineage.build.version = $(prop ro.lineage.build.version)   ro.lineage.releasetype = $(prop ro.lineage.releasetype)"
-sudo grep -qs "^lineage.updater.uri=https://raw.githubusercontent.com/peng16384/" "$S"/*.prop "$S"/etc/*.prop \
-    && ok "lineage.updater.uri 指向公開 repo" || bad "沒有 lineage.updater.uri"
+if [ "$ROM" = lineage ]; then
+    echo "        ro.build.date.utc = $(prop ro.build.date.utc)   ro.lineage.build.version = $(prop ro.lineage.build.version)   ro.lineage.releasetype = $(prop ro.lineage.releasetype)"
+else
+    echo "        ro.build.date.utc = $(prop ro.build.date.utc)   ro.evolution.build.version = $(prop ro.evolution.build.version)"
+fi
+if [ "$ROM" = lineage ]; then
+    sudo grep -qs "^lineage.updater.uri=https://raw.githubusercontent.com/peng16384/" "$S"/*.prop "$S"/etc/*.prop \
+        && ok "lineage.updater.uri 指向公開 repo" || bad "沒有 lineage.updater.uri"
+else
+    # Evolution X 的 Updater 把網址寫死在字串資源 updater_server_url（預設指向官方的 Evolution-X/OTA），
+    # 我們用 device tree 的 RRO 蓋掉 —— 網址字串會出現在那個 overlay apk 的 resources.arsc 裡（不壓縮）
+    ov=$(sudo grep -rlaF "raw.githubusercontent.com/peng16384/android_device_asus_Z01G" "$S" 2>/dev/null | grep -i overlay | head -3 || true)
+    [ -n "$ov" ] && ok "Updater 的網址被 overlay 改指向公開 repo（${ov#m}）" || bad "Updater 仍指向 Evolution X 官方的 OTA（沒有 overlay）"
+fi
 
 echo "=== 2. zip 的簽名 ==="
 if python3 "$SRC/build/make/tools/releasetools/check_ota_package_signature.py" "$K/releasekey.x509.pem" "$ZIP" >/dev/null 2>&1; then
@@ -130,9 +155,21 @@ local_path() { echo "$1" | sed -e 's#^/#m/#' -e 's#^boot-ramdisk:/#boot.rd/#' -e
 # 命中的是壓縮檔時拆開看是哪些檔命中。只有鍵盤的字典檔命中 = 一般單字剛好含那幾個字母
 # （2026-09-27：LatinIME 的 res/raw/main_pl.dict，幾個波蘭文單字剛好含有樣式字串），列出來但不算失敗。
 # （單字本身別寫進這裡：這支會公開，tools/150 會把它當成個資擋下來）
-# 輸出：DICT <檔> 或 REAL <檔>
+# 另一種不算的：與原始碼樹 vendor/gms 裡的 Google 預編檔**逐位元相同**的檔（Evolution X 內建 GApps；
+# 2026-09-28：Google App、Play 商店、Gboard 等的字串與語音詞彙表裡的一般單字）—— 那不是我們的建置產出的，
+# 不可能含建置者的資訊。判準是雜湊相同，不是檔名：內容被動過一個位元就照樣算 REAL。
+# 輸出：DICT <檔>、UPSTREAM <檔> 或 REAL <檔>
+upstream_same() {   # $1 = 映像裡的路徑（m/...）；與 vendor/gms 裡同名檔的 sha256 相同就回 0
+    local b h s
+    [ -d "$SRC/vendor/gms" ] || return 1
+    b=$(basename "$1"); h=$(sudo sha256sum "$1" | cut -c1-64)
+    while read -r s; do [ "$(sha256sum < "$s" | cut -c1-64)" = "$h" ] && return 0; done \
+        < <(find "$SRC/vendor/gms" -name "$b" -type f 2>/dev/null)
+    return 1
+}
 classify() {   # $1 = 樣式檔，stdin = 命中的檔名
     while read -r f; do
+        if upstream_same "$(local_path "$f")"; then echo "UPSTREAM $f"; continue; fi
         case "$f" in
         *.apk|*.jar|*.apex|*.capex|*.zip)
             sudo cat "$(local_path "$f")" > arc.tmp
@@ -157,6 +194,8 @@ for set in public secret; do
     C=$(hits "$PII/$set.txt" | classify "$PII/$set.txt")
     R=$(echo "$C" | grep '^REAL ' || true); D=$(echo "$C" | grep '^DICT ' || true)
     [ -z "$D" ] || { echo "        $set 樣式只命中字典檔（一般單字，不算）："; echo "$D" | sed 's/^DICT /          /'; }
+    U=$(echo "$C" | grep '^UPSTREAM ' || true)
+    [ -z "$U" ] || { echo "        $set 樣式命中、但與 vendor/gms 的 Google 原檔逐位元相同（不是我們產出的，不算）："; echo "$U" | sed 's/^UPSTREAM /          /'; }
     if [ -z "$R" ]; then ok "$set 樣式：沒有真正的命中"
     else
         bad "$set 樣式命中 $(echo "$R" | wc -l) 個檔："; echo "$R" | head -20 | sed 's/^REAL /          /'

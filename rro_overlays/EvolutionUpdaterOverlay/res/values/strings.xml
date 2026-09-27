@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 公開 repo main 分支的 ota/evox/Z01G.json（{device} 由 Updater 換成 ro.evolution.device） -->
+    <string name="updater_server_url" translatable="false">https://raw.githubusercontent.com/peng16384/android_device_asus_Z01G/main/ota/evox/{device}.json</string>
+</resources>

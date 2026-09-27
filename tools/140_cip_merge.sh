@@ -28,14 +28,15 @@ TAG=${1:-v4.4.302-cip114}
 BASE=${2:-v4.4.302-cip68}
 CIP=~/cip-4.4
 K=~/lineage-22.2/kernel/asus/msm8998
-OBJ=~/lineage-22.2/out/target/product/Z01G/obj/KERNEL_OBJ
+OBJ=${OBJ:-$HOME/lineage-22.2/out-release/target/product/Z01G/obj/KERNEL_OBJ}   # 開發用的 out/ 已刪（2026-09-27）
 
 cd "$CIP"
 for r in "$TAG" "$BASE"; do git rev-parse -q --verify "$r" >/dev/null || { echo "!!! $CIP 沒有 $r"; exit 1; }; done
 
 # 1. 範圍
 find "$OBJ" -name '.*.o.cmd' -print0 | xargs -0 cat 2>/dev/null \
-    | grep -aoE "$K/[^ :\\\\]+\.(c|h|S)" | sed "s|$K/||" | sort -u > used_files.txt
+    | grep -aoE "kernel/asus/msm8998/[^ :\\\\]+\.(c|h|S)" | sed "s|.*kernel/asus/msm8998/||" | sort -u > used_files.txt
+# ↑ 不綁前綴：發布版（tools/144）是從 /src/lineage-22.2 編的，.o.cmd 裡的路徑不是 $K
 git diff --diff-filter=M --name-only "$BASE" "$TAG" | sort > cip_modified.txt
 comm -12 cip_modified.txt used_files.txt > relevant.txt
 echo "  範圍：CIP 修改 $(wc -l < cip_modified.txt) 個檔、這顆 kernel 用到 $(wc -l < used_files.txt) 個 -> 交集 $(wc -l < relevant.txt)"

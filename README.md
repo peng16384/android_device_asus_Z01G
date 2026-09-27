@@ -78,7 +78,7 @@ CIP 4.4 SLTS 的安全修補（v4.4.302-cip114），見 [`docs/kernel.md`](docs/
 | `rootdir/` | fstab、init rc、開機腳本 |
 | `sepolicy/` | SELinux 政策（**enforcing**）|
 | `patches/` | 對其他專案的修改（見上）|
-| `tools/` | 建置、驗證、發布用的工具（`tools/12x`–`14x`）|
+| `tools/` | 建置、驗證、發布用的工具（`tools/12x`–`14x`；Evolution X 用的 `153`、`154`）|
 | `docs/` | 工程紀錄（見下）|
 
 ## 編譯
@@ -105,6 +105,23 @@ bash device/asus/Z01G/tools/135_verify_build_22.sh   # 檢查產物
 **發布版**（私鑰簽名、產物裡不帶建置者資訊）另有一條路：
 `tools/145`（產生金鑰）→ `tools/146`（加密備份）→ `tools/144`（編）→ `tools/147`（驗證簽名與個資）
 → `tools/148`（產生 OTA 用的 JSON）。
+
+## Evolution X（vic，Android 15）
+
+**同一棵 device tree、同一顆 kernel** 也能編 [Evolution X](https://github.com/Evolution-X/manifest)
+的 `vic` 分支（它的基底就是 LineageOS 22.2）。差別只有：
+
+| | LineageOS 22.2 | Evolution X vic |
+|---|---|---|
+| 原始碼 | `tools/121` | `tools/153`（`~/evox-vic`）|
+| 放 kernel / blob / patch / 私鑰 | `tools/127`、`136` | `tools/154` 一次做完（4 個 patch 在 Evolution X 的 fork 上都能直接套）|
+| 編譯 | `breakfast Z01G` + `mka bacon` | `lunch lineage_Z01G-bp1a-userdebug` + `m evolution`（`ROM=evox tools/144`）|
+| 私鑰目錄 | `vendor/lineage-priv/keys` | `vendor/evolution-priv/keys` |
+| OTA 清單 | 屬性 `lineage.updater.uri` | 字串資源 `updater_server_url` —— `rro_overlays/EvolutionUpdaterOverlay` 蓋掉 |
+| GApps | 無 | 內建（`WITH_GMS`）。**system 分割只有 5 GB**，完整版用掉 4.8 GB |
+
+`lineage_Z01G.mk` 裡的 `EVO_*` / `TARGET_SCREEN_*` 是給 Evolution X 的，LineageOS 不讀這些變數；
+Updater 的 overlay 也只在 Evolution X 的樹裡才會裝。
 
 ## 工程紀錄
 

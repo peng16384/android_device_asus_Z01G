@@ -22,7 +22,7 @@ import sys
 from collections import defaultdict
 
 SRC = os.path.expanduser('~/lineage-22.2')
-O = SRC + '/out/target/product/Z01G'
+O = os.environ.get('O', SRC + '/out-release/target/product/Z01G')   # 開發用的 out/ 已刪
 RE = SRC + '/prebuilts/clang/host/linux-x86/llvm-binutils-stable/llvm-readelf'
 
 SEARCH = {  # 與 /linkerconfig/ld.config.txt 的 [legacy] 相同

@@ -49,6 +49,11 @@ DEVICE_PACKAGE_OVERLAYS += \
 
 PRODUCT_ENFORCE_RRO_TARGETS += *
 
+# Evolution X：Updater 的 OTA 清單網址（rro_overlays/EvolutionUpdaterOverlay）。只在 Evolution X 的樹裡裝
+ifneq ($(wildcard packages/apps/Updater/app/src/main/java/org/evolution),)
+PRODUCT_PACKAGES += Z01GEvolutionUpdaterOverlay
+endif
+
 # Partitions
 PRODUCT_PACKAGES += \
     vendor_bt_firmware_mountpoint \

@@ -1,0 +1,11 @@
+//
+// Evolution X 的 Updater 把 OTA 清單網址寫死在字串資源 updater_server_url
+// （預設指向官方的 Evolution-X/OTA），不像 LineageOS 有 lineage.updater.uri 屬性可設 -> 用 RRO 蓋掉。
+// 只在 Evolution X 的樹裡裝（device.mk 以 Updater 的原始碼路徑判斷）；LineageOS 的 Updater 套件名不同，
+// 就算裝了也不會生效。
+//
+runtime_resource_overlay {
+    name: "Z01GEvolutionUpdaterOverlay",
+    resource_dirs: ["res"],
+    product_specific: true,
+}

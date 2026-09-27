@@ -11,10 +11,16 @@
 # 任何一項不過就回非 0。
 set -o pipefail
 
-SRC=${SRC:-$HOME/lineage-22.2}
+# ROM=lineage（預設）或 ROM=evox（Evolution X vic）—— 同一棵 device tree，檢查項目相同，只差路徑與 zip 名稱
+ROM=${ROM:-lineage}
+case "$ROM" in
+    lineage) SRC=${SRC:-$HOME/lineage-22.2}; ZIPGLOB='lineage-22.2-*-UNOFFICIAL-Z01G.zip' ;;
+    evox)    SRC=${SRC:-$HOME/evox-vic};     ZIPGLOB='EvolutionX-*-Z01G-*.zip' ;;
+    *) echo "!!! ROM=$ROM（lineage 或 evox）" >&2; exit 1 ;;
+esac
 PROJ=${PROJ:-$(cd "$(dirname "$(realpath "$0")")/.." && pwd)}   # device tree 的根目錄
-O=${OUT_DIR:-$SRC/out}/target/product/Z01G
-ZIP=$(ls -t "$O"/lineage-22.2-*-UNOFFICIAL-Z01G.zip 2>/dev/null | head -1)
+O=${OUT_DIR:-$SRC/out-release}/target/product/Z01G   # 開發用的 out/ 已刪，一律驗發布版（tools/144）
+ZIP=$(ls -t "$O"/$ZIPGLOB 2>/dev/null | head -1)
 [ -n "$ZIP" ] || { echo "!!! 找不到 zip" >&2; exit 1; }
 fail=0
 ok()  { printf '  OK    %s\n' "$*"; }
@@ -99,12 +105,18 @@ bp=$(grep -h '^ro.build.product=' "$O/system/build.prop" | tail -1 | cut -d= -f2
 chk "ro.build.product=$bp 不超過 7 字（gx_ta_start 的 8 bytes 緩衝區）且有對應的 ACDB 目錄" \
     "[ \${#bp} -le 7 ] && [ -d '$O/system/vendor/etc/acdbdata/$bp' ]"
 # config.fs 的 vendor/ 條目要真的寫進 system.img（fs_config/Android.bp）
-T=$(ls -td "$O"/obj/PACKAGING/target_files_intermediates/*/ 2>/dev/null | head -1)
-fc="$T/META/filesystem_config.txt"
+# 直接讀 system.img 裡檔案實際帶的 capability（security.capability xattr）—— 最終產物才算數。
+# 以前讀 target_files 的 META/filesystem_config.txt，但 Evolution X 建置後不留 target_files
+#（2026-09-28：三項全判失敗，其實 capability 兩個 ROM 逐一相同）
+CW=$(mktemp -d); CI="$O/system.img"
+if file "$CI" | grep -q 'Android sparse'; then "${OUT_DIR:-$SRC/out-release}/host/linux-x86/bin/simg2img" "$CI" "$CW/raw.img"; CI="$CW/raw.img"; fi
+mkdir "$CW/m"; sudo mount -o ro,loop "$CI" "$CW/m"
+CR="$CW/m"; [ -d "$CR/system/vendor" ] && CR="$CR/system"
 for b in pm-service imsdatadaemon cnd; do
-    chk "system/vendor/bin/$b 有 capabilities（config.fs）" \
-        "grep -E '^system/vendor/bin/$b ' '$fc' | grep -qv 'capabilities=0x0\$'"
+    chk "system/vendor/bin/$b 有 capabilities（config.fs；讀 system.img 的 xattr）" \
+        "sudo getcap '$CR/vendor/bin/$b' | grep -q 'cap_net_bind_service'"
 done
+sudo umount "$CW/m"; rm -rf "$CW"
 chk "fs_config_files 不是空的" "[ -s '$O/system/etc/fs_config_files' ]"
 # 音訊 HAL：非 Treble 下 libbinder_ndk 與 vndbinder 共用 ProcessState（tools/136 的 patch）
 # 第一版只擋 abort（pool 已啟動就不縮），但 AIDL 服務（藍牙音訊）因此註冊到 vndservicemanager、藍牙卡死

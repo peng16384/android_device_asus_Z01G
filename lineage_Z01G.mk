@@ -36,3 +36,10 @@ PRODUCT_BUILD_PROP_OVERRIDES += \
     SystemName=WW_Phone
 
 TARGET_VENDOR := asus
+
+# Evolution X（vic）用的旗標 —— LineageOS 不讀這些變數，同一棵 device tree 兩邊共用。
+# 螢幕尺寸給開機動畫用（1080x1920 也是 Evolution X 的預設，寫明免得將來預設改了）。
+# GApps：預設 WITH_GMS=true（完整版）；system 分割只有 5 GB，放不下時改 TARGET_USES_MINI_GAPPS / _PICO_GAPPS
+EVO_BUILD_TYPE := Unofficial
+TARGET_SCREEN_HEIGHT := 1920
+TARGET_SCREEN_WIDTH := 1080
