@@ -101,7 +101,11 @@ else
     [ -n "$ov" ] && ok "Updater 的網址被 overlay 改指向公開 repo（${ov#m}）" || bad "Updater 仍指向 Evolution X 官方的 OTA（沒有 overlay）"
 fi
 
-echo "=== 2. zip 的簽名 ==="
+echo "=== 2. zip 的大小與簽名 ==="
+# GitHub Release 單檔上限 2 GiB（2026-09-28：Evolution X 完整 GApps 版 2.44 GiB、mini 版沒開 brotli 2.09 GiB，都是上傳時才發現）
+zs=$(stat -c %s "$ZIP")
+[ "$zs" -lt 2147483648 ] && ok "zip $(numfmt --to=iec "$zs")，在 GitHub Release 的 2 GiB 上限內（餘 $(( (2147483648 - zs) / 1000000 )) MB）" \
+    || bad "zip $(numfmt --to=iec "$zs")，超過 GitHub Release 單檔 2 GiB 上限"
 if python3 "$SRC/build/make/tools/releasetools/check_ota_package_signature.py" "$K/releasekey.x509.pem" "$ZIP" >/dev/null 2>&1; then
     ok "zip 以 releasekey 簽（check_ota_package_signature.py）"
 else bad "zip 不是 releasekey 簽的"; fi

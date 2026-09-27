@@ -10,6 +10,13 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/full_base_telephony.mk)
 
 $(call inherit-product, device/asus/Z01G/device.mk)
 
+# Evolution X：GApps 用 mini 版（vendor/lineage/config/common_full_phone.mk 依這個變數選 gms_mini.mk）。
+# ⚠ 要寫在 inherit common_full_phone.mk 之前，判斷時才看得到。
+# 完整版的 zip 是 2.44 GiB，超過 GitHub Release 單檔 2 GiB 的上限；mini 少了相簿、錄音機、
+# Android System Intelligence、ARCore、Pixel 動態桌布等約 744 MB（大多能從 Play 商店裝回來），
+# system 也從 4.8 GB 降到約 4 GB（分割 5 GB）。LineageOS 不讀這個變數
+TARGET_USES_MINI_GAPPS := true
+
 $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
 
 PRODUCT_NAME := lineage_Z01G
@@ -39,7 +46,7 @@ TARGET_VENDOR := asus
 
 # Evolution X（vic）用的旗標 —— LineageOS 不讀這些變數，同一棵 device tree 兩邊共用。
 # 螢幕尺寸給開機動畫用（1080x1920 也是 Evolution X 的預設，寫明免得將來預設改了）。
-# GApps：預設 WITH_GMS=true（完整版）；system 分割只有 5 GB，放不下時改 TARGET_USES_MINI_GAPPS / _PICO_GAPPS
+# GApps 的版本（mini）在上面、inherit common_full_phone.mk 之前設定
 EVO_BUILD_TYPE := Unofficial
 TARGET_SCREEN_HEIGHT := 1920
 TARGET_SCREEN_WIDTH := 1080

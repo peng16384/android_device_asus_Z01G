@@ -1,0 +1,21 @@
+From: peng16384 <158992409+peng16384@users.noreply.github.com>
+Subject: [PATCH] releasetools: compress full-OTA new.dat with brotli again
+
+Evolution X changed the condition to `if 0:`, so full OTA packages store
+system.new.dat deflated only. For Z01G (non-A/B, 5 GB system) the mini-GApps
+package is then 2.09 GiB, above GitHub's 2 GiB release asset limit; with
+brotli (quality 6, the AOSP default) it is 1.89 GiB. Restores upstream.
+---
+diff --git a/tools/releasetools/common.py b/tools/releasetools/common.py
+index e96ea97..c452210 100644
+--- a/tools/releasetools/common.py
++++ b/tools/releasetools/common.py
+@@ -3660,7 +3660,7 @@ class BlockDifference(object):
+     #   compression_time:   75s  | 265s               | 719s
+     #   decompression_time: 15s  | 25s                | 25s
+ 
+-    if 0:
++    if not self.src:
+       brotli_cmd = ['brotli', '--quality=6',
+                     '--output={}.new.dat.br'.format(self.path),
+                     '{}.new.dat'.format(self.path)]

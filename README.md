@@ -114,11 +114,11 @@ bash device/asus/Z01G/tools/135_verify_build_22.sh   # 檢查產物
 | | LineageOS 22.2 | Evolution X vic |
 |---|---|---|
 | 原始碼 | `tools/121` | `tools/153`（`~/evox-vic`）|
-| 放 kernel / blob / patch / 私鑰 | `tools/127`、`136` | `tools/154` 一次做完（4 個 patch 在 Evolution X 的 fork 上都能直接套）|
+| 放 kernel / blob / patch / 私鑰 | `tools/127`、`136` | `tools/154` 一次做完（4 個 patch 在 Evolution X 的 fork 上都能直接套；<br>另外套 `patches-evox/`：Evolution X 關掉了完整 OTA 的 brotli 壓縮，改回 AOSP 原本的寫法）|
 | 編譯 | `breakfast Z01G` + `mka bacon` | `lunch lineage_Z01G-bp1a-userdebug` + `m evolution`（`ROM=evox tools/144`）|
 | 私鑰目錄 | `vendor/lineage-priv/keys` | `vendor/evolution-priv/keys` |
 | OTA 清單 | 屬性 `lineage.updater.uri` | 字串資源 `updater_server_url` —— `rro_overlays/EvolutionUpdaterOverlay` 蓋掉 |
-| GApps | 無 | 內建（`WITH_GMS`）。**system 分割只有 5 GB**，完整版用掉 4.8 GB |
+| GApps | 無 | 內建 **mini** 版（`TARGET_USES_MINI_GAPPS`）：完整版的 zip 2.44 GiB，超過 GitHub Release 單檔 2 GiB；<br>mini + brotli 是 1.9 GiB。system 4.1 GB（分割 5 GB）|
 
 `lineage_Z01G.mk` 裡的 `EVO_*` / `TARGET_SCREEN_*` 是給 Evolution X 的，LineageOS 不讀這些變數；
 Updater 的 overlay 也只在 Evolution X 的樹裡才會裝。

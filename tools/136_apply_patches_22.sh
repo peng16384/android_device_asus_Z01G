@@ -31,18 +31,31 @@ set -e -o pipefail
 SRC=${SRC:-$HOME/lineage-22.2}
 PROJ=${PROJ:-$(cd "$(dirname "$(realpath "$0")")/.." && pwd)}   # device tree 的根目錄
 P=$PROJ/patches
+# 只套在 Evolution X 樹上的（它自己 fork 裡改掉、而 LineageOS 本來就對的東西）：
+#   build/make  0001  releasetools：完整 OTA 的 system.new.dat 用 brotli 壓 —— Evolution X 把條件改成 `if 0:`，
+#                     zip 因此大 8% 以上，mini GApps 版 2.09 GiB 超過 GitHub Release 單檔 2 GiB（開了是 1.89 GiB）
+PE=$PROJ/patches-evox
 
-cd "$P"
-find . -name '*.patch' | sort | while read -r f; do
-    proj=$(dirname "${f#./}")
-    name=$(basename "$f")
-    if git -C "$SRC/$proj" apply --reverse --check "$P/$f" 2>/dev/null; then
-        echo "  已套  $proj  $name"
-    elif git -C "$SRC/$proj" apply --check "$P/$f" 2>/dev/null; then
-        git -C "$SRC/$proj" apply "$P/$f"
-        echo "  套上  $proj  $name"
-    else
-        echo "!!! 套不上：$proj  $name" >&2
-        exit 1
-    fi
-done
+apply_dir() {
+    cd "$1"
+    find . -name '*.patch' | sort | while read -r f; do
+        proj=$(dirname "${f#./}")
+        name=$(basename "$f")
+        if git -C "$SRC/$proj" apply --reverse --check "$1/$f" 2>/dev/null; then
+            echo "  已套  $proj  $name"
+        elif git -C "$SRC/$proj" apply --check "$1/$f" 2>/dev/null; then
+            git -C "$SRC/$proj" apply "$1/$f"
+            echo "  套上  $proj  $name"
+        else
+            echo "!!! 套不上：$proj  $name" >&2
+            exit 1
+        fi
+    done
+}
+
+apply_dir "$P"
+# Evolution X 的樹：它的 Updater 是 org.evolution.updater（device.mk 判斷 overlay 用的也是這個）
+if [ -d "$SRC/packages/apps/Updater/app/src/main/java/org/evolution" ]; then
+    echo "  （Evolution X 的樹，另外套 patches-evox）"
+    apply_dir "$PE"
+fi
