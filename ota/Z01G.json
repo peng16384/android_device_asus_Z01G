@@ -1,12 +1,12 @@
 {
   "response": [
     {
-      "datetime": 1790503248,
+      "datetime": 1790544128,
       "filename": "lineage-22.2-20260927-UNOFFICIAL-Z01G.zip",
-      "id": "bf87506681d742e4a187475c3a83a0e4671c0b868ba2765bbe041090295f39a6",
+      "id": "cc76d28d36ce61cce77c23cb5c0cd9756916dc56986547f22afb37ca45c44ace",
       "romtype": "UNOFFICIAL",
-      "size": 1138843951,
-      "url": "https://github.com/peng16384/android_device_asus_Z01G/releases/download/22.2-v1.0/lineage-22.2-20260927-UNOFFICIAL-Z01G.zip",
+      "size": 1138966091,
+      "url": "https://github.com/peng16384/android_device_asus_Z01G/releases/download/22.2-v1.1/lineage-22.2-20260927-UNOFFICIAL-Z01G.zip",
       "version": "22.2"
     }
   ]

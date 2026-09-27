@@ -29,7 +29,7 @@ received anything newer than Android 8.0 from ASUS.
 | Auto-brightness | ✅ | ✗ not in `v1.0` |
 | Vulkan | ✅ 1.1 | not tested |
 | Widevine DRM | L3 only | not tested |
-| NFC | ✗ not included | ✗ disabled |
+| NFC (incl. MIFARE Classic, e.g. EasyCard) | ✅ since `22.2-v1.1` / `evox-10.21-v1.1` | ✗ disabled |
 | SELinux | **Enforcing** | **Enforcing** |
 | Kernel | 4.4.302 + CIP 4.4 SLTS security fixes | 4.4.78 (ASUS stock source) |
 | Signing / updates | own release keys, OTA via the Updater | test keys, manual |
@@ -156,7 +156,7 @@ proprietary vendor files included in the release ROM zips.
 | LineageOS 16.0 | 9 | `lineage-16.0` | 日常可用（release `v1.0`）|
 
 兩版的功能對照見上方英文的 Status 表。22.2 另外多了 Vulkan、CIP 的 kernel 安全修補、
-私鑰簽名與系統內更新；限制是 Widevine 只有 L3、沒有 NFC。
+私鑰簽名與系統內更新，以及 NFC（`22.2-v1.1` / `evox-10.21-v1.1` 起，悠遊卡這類 MIFARE Classic 卡也讀得到）；限制是 Widevine 只有 L3。
 Evolution X 與 22.2 用同一棵 device tree、同一顆 kernel、同一批 vendor 檔，硬體功能相同，另外內建 Google 服務。
 
 代號說明：ASUS 自己的型號是 **Z01GD**，但社群（TWRP、shakalaca）的 codename

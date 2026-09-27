@@ -5,7 +5,7 @@
 > - **Widevine is L3 only** (streaming apps limit you to SD). The device's
 >   keybox is rejected by TrustZone even with every stock ASUS component; this is
 >   not caused by the port.
-> - NFC, FM radio and ANT+ are not included.
+> - FM radio and ANT+ are not included. (NFC works since `22.2-v1.1`.)
 > - Without GApps there is no Wi-Fi/cell network location, only GPS.
 > - No kernel module is loaded (`/proc/modules` is empty); everything needed is
 >   built into the kernel.
@@ -31,9 +31,11 @@ DRM 服務正常，Widevine 內容播得了，但只到 **L3**：Netflix 之類�
 推測是解鎖 bootloader 之後 TrustZone 就不再接受 keybox，但沒辦法在鎖定狀態下對照，未證實。
 詳見 `lineage-22.2` 分支 `docs/bringup.md` 第 9 節。
 
-### 沒有 NFC、FM、ANT+
+### 沒有 FM、ANT+
 
-建 blob 清單時刻意沒收（NXP NFC、FM 收音機、ANT+）。
+建 blob 清單時刻意沒收（FM 收音機、ANT+）。
+
+NFC 在 `22.2-v1.0` 也沒有，**`22.2-v1.1` 起可以用**（NXP PN548；悠遊卡這類 MIFARE Classic 卡也讀得到）。
 
 ### 沒裝 GApps 就只有 GPS 定位
 
