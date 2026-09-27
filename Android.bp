@@ -1,0 +1,55 @@
+//
+// Copyright (C) 2018-2024 The LineageOS Project
+// SPDX-License-Identifier: Apache-2.0
+//
+
+soong_namespace {
+    imports: [
+        "hardware/google/interfaces",
+        "hardware/google/pixel"
+    ],
+}
+
+// qcacld 開機時 request_firmware 這個檔拿 MAC（Intf0/Intf1MacAddress=...），讀不到就隨機產生。
+// ASUS 的 MAC 在出廠時寫進 /factory（原廠也是這條 symlink）；OnePlus 的 /mnt/vendor/persist 這台沒有
+install_symlink {
+    name: "firmware_wlan_mac.bin_symlink",
+    vendor: true,
+    installed_location: "firmware/wlan/qca_cld/wlan_mac.bin",
+    symlink_target: "/factory/wlan_mac.bin",
+}
+
+// OnePlus 的 cnss-daemon 讀不到 /sys/project_info/hw_id 時要 bdwlanc.bin；實際指向哪份 ASUS BDF
+// 由 init.z01g.bdf.sh 依 ro.boot.id.rf 在開機時決定（說明在那支腳本開頭）
+install_symlink {
+    name: "firmware_bdwlanc.bin_symlink",
+    vendor: true,
+    installed_location: "firmware/bdwlanc.bin",
+    symlink_target: "/data/vendor/wifi/bdwlan_z01g.bin",
+}
+
+install_symlink {
+    name: "firmware_WCNSS_qcom_cfg.ini_symlink",
+    vendor: true,
+    installed_location: "firmware/wlan/qca_cld/WCNSS_qcom_cfg.ini",
+    symlink_target: "/vendor/etc/wifi/WCNSS_qcom_cfg.ini",
+}
+
+// Vulkan 驅動：A15 的 libvulkan 用 android_load_sphal_library("vulkan.msm8998.so") 載入 ——
+// Treble 裝置在 sphal namespace 找（搜尋路徑含 /vendor/lib*/hw），非 Treble 只有 default namespace
+// （搜尋路徑是 /vendor/lib*，沒有 hw/）-> 找不到驅動、不報錯，vkjson 的 devices 是空的
+// （logcat 只有 vndksupport 那一行：Could not load vulkan.msm8998.so from default namespace）。
+// 在 /vendor/lib*/ 放一條 symlink 指到 hw/ 裡的實體檔
+install_symlink {
+    name: "vulkan.msm8998.so_symlink64",
+    vendor: true,
+    installed_location: "lib64/vulkan.msm8998.so",
+    symlink_target: "/vendor/lib64/hw/vulkan.msm8998.so",
+}
+
+install_symlink {
+    name: "vulkan.msm8998.so_symlink32",
+    vendor: true,
+    installed_location: "lib/vulkan.msm8998.so",
+    symlink_target: "/vendor/lib/hw/vulkan.msm8998.so",
+}

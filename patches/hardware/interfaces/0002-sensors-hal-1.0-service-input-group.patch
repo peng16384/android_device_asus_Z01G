@@ -1,0 +1,12 @@
+diff --git a/sensors/1.0/default/android.hardware.sensors@1.0-service.rc b/sensors/1.0/default/android.hardware.sensors@1.0-service.rc
+index 1af6d0b..4dad393 100644
+--- a/sensors/1.0/default/android.hardware.sensors@1.0-service.rc
++++ b/sensors/1.0/default/android.hardware.sensors@1.0-service.rc
+@@ -2,6 +2,6 @@ service vendor.sensors-hal-1-0 /vendor/bin/hw/android.hardware.sensors@1.0-servi
+     interface android.hardware.sensors@1.0::ISensors default
+     class hal
+     user system
+-    group system wakelock uhid context_hub
++    group system wakelock uhid context_hub input
+     capabilities BLOCK_SUSPEND
+     rlimit rtprio 10 10

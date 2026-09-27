@@ -1,0 +1,407 @@
+{
+ "vendor/bin/CameraOTP": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/bin/FpCmd": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/bin/LKCore": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/bin/gxFpDaemon": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/bin/t2l_hit": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libAsusDngCreator.so": {
+  "clear_versions": [
+   "__aeabi_memcpy",
+   "__aeabi_memset",
+   "__gnu_Unwind_Find_exidx"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libDxHdcp.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libUserAgent.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libarcsoft_dualcam_refocus.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libarcsoft_panorama_burstcapture.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libcamera_pano.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libcameraap.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libchromaflash.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libdualcameraddm.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libjpeggifcodec.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libmmcamera2_cpp_module.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_iface_modules.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_imglib_modules.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_is.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_isp_modules.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_mct.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_q3a_core.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_sensor_modules.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_stats_algorithm.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_stats_lib.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera2_stats_modules.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera_faceproc.so": {
+  "clear_versions": [
+   "__aeabi_memcpy",
+   "__aeabi_memset",
+   "__gnu_Unwind_Find_exidx"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera_hdr_gb_lib.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libmmcamera_imglib.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmcamera_interface.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmmjpeg_interface.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libmms_gyro_vstab.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libmms_gyro_vstab_auth.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libmorpho_easy_hdr.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libmorpho_panorama_gp.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/liboptizoom.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/librs_adreno.so": {
+  "clear_versions": [],
+  "compiler_rt": true,
+  "libstdcxx": false
+ },
+ "vendor/lib/libscveBlobDescriptor_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libscveCommon.so": {
+  "clear_versions": [
+   "remote_register_buf"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libscveCommon_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libscveFaceLandmarks_stub.so": {
+  "clear_versions": [
+   "remote_handle64_close",
+   "remote_handle64_invoke",
+   "remote_handle64_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libscveObjectTracker_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libseemore.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libsns_low_lat_stream_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib/libts_detected_face_hal.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libts_face_beautify_hal.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libubifocus.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib/libvideobokeh.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/hw/fingerprint.gx5206.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/hw/fingerprint.gx5216.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/hw/gxfingerprint.default.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libUserAgent.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libautocct.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libchromaflash.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libdualcameraddm.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libfp_client.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libfpservice.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/liboptizoom.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libscveBlobDescriptor_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib64/libscveCommon.so": {
+  "clear_versions": [
+   "remote_register_buf"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib64/libscveCommon_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib64/libscveFaceLandmarks_stub.so": {
+  "clear_versions": [
+   "remote_handle64_close",
+   "remote_handle64_invoke",
+   "remote_handle64_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib64/libscveObjectTracker_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib64/libseemore.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libsns_low_lat_stream_stub.so": {
+  "clear_versions": [
+   "remote_handle_close",
+   "remote_handle_invoke",
+   "remote_handle_open"
+  ],
+  "compiler_rt": false,
+  "libstdcxx": false
+ },
+ "vendor/lib64/libts_detected_face_hal.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libts_face_beautify_hal.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libubifocus.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ },
+ "vendor/lib64/libvideobokeh.so": {
+  "clear_versions": [],
+  "compiler_rt": false,
+  "libstdcxx": true
+ }
+}

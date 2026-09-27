@@ -1,0 +1,247 @@
+# ZS551KL（Z01G）的 ASUS 專屬 init —— 由 init.qcom.rc 的 `import /vendor/etc/init/hw/init.target.rc` 載入。
+#
+# init.qcom.rc 是 OnePlus msm8998-common（22.2）的，負責 SoC 共通與借 OnePlus 的 QTI 服務。
+# 這裡只放 ASUS 硬體需要、而 OnePlus 沒有的：來源是 16.0 能用的那一組
+# （16.0 的 rootdir/etc/init.z01g.rc + 原廠 vendor 的 init.qcom.rc / init.target.rc
+#  + 原廠 boot ramdisk 的 init.asus.rc）。
+# /asusfw 的掛載在 fstab.qcom（有 context=）。
+
+# ---------------------------------------------------------------------------
+# qseecomd 的就緒旗標：OnePlus（OOS 10）的 qseecomd 設 vendor.sys.listeners.registered，
+# ASUS 的 keystore.msm8998.so / gatekeeper.msm8998.so / libkeymasterdeviceutils.so 等的是
+# Oreo 的舊名稱 sys.listeners.registered（strings 可見）。不接起來 keymaster 會無限等待 ->
+# vold 拿不到 keymaster -> 開不了機。
+#
+# ⚠⚠ 不能寫成 on property:vendor.sys.listeners.registered=true（第一版就是這樣，實測死結）：
+#    init 的屬性觸發動作排在 late-init 那串 trigger（post-fs-data…）之後才執行，而 post-fs-data 的
+#    exec vdc keymaster earlyBootEnded 要等 keystore2 -> keymaster -> 這個屬性 -> 等不到 -> 整個 init 卡住。
+#    連帶 start adbd（也是屬性觸發：sys.usb.config=adb）也永遠輪不到 -> adb 不上線、USB 描述元失敗。
+#    改在 post-fs 直接設：init.qcom.rc 的 on post-fs 先 wait_for_prop vendor.sys.listeners.registered true，
+#    本檔的 on post-fs 排在它後面（init.qcom.rc import 本檔；kmsg 實測順序相同）
+# ---------------------------------------------------------------------------
+on post-fs
+    setprop sys.listeners.registered ${vendor.sys.listeners.registered}
+
+# ---------------------------------------------------------------------------
+# 指紋 / Home 鍵（Goodix gx5206 / gx5216）
+#
+# 原廠的啟動鏈（boot ramdisk 的 init.asus.rc）：
+#   fpseek     偵測是哪一顆，setprop ro.hardware.fingerprint（gx5206 / gx5216）
+#   fpservice  /vendor/etc/fpservice.sh 依屬性值 start gx_fpd
+#   gx_fpd     gxFpDaemon：跟感測器對話、注入 KEY_HOME（kernel 驅動自己不送）
+# ⚠ fpseek 是 user system：它要開 /dev/goodix_fp（system:root 0760）與 /dev/qseecom（system:drmrpc 0660），
+#   寫 user root 的話兩個都要 CAP_DAC_OVERRIDE，而且失敗時**沒有任何 AVC**（16.0 查了六輪）。
+# ---------------------------------------------------------------------------
+on fs
+    # persist 的第二個掛載點（原因見 BoardConfig.mk 的 BOARD_ROOT_EXTRA_FOLDERS persist）。
+    # init.qcom.rc 的 on fs 已經 mount_all 過（本檔由它 import，同一觸發排在後面）
+    mount none /mnt/vendor/persist /persist bind
+    chown system root /dev/goodix_fp
+    chmod 0760 /dev/goodix_fp
+
+service fpseek /vendor/bin/fpseek
+    class late_start
+    user system
+    group system drmrpc
+    oneshot
+
+service gx_fpd /vendor/bin/gxFpDaemon
+    class late_start
+    user system
+    group system
+    disabled
+
+# fpseek 寫的是 vendor.asus.fp.hwmodule（extract-files.py 改過屬性名：ro.hardware.fingerprint 是
+# exported_default_prop，SELinux 只准 init / vendor_init 寫），這裡由 init 抄過去
+on property:vendor.asus.fp.hwmodule=*
+    setprop ro.hardware.fingerprint ${vendor.asus.fp.hwmodule}
+
+# 原廠由 /vendor/etc/fpservice.sh 判斷型號後 `start gx_fpd`。那支腳本跑在 qti_init_shell，SELinux 要檢查
+# ctl.start$gx_fpd —— enforcing 開機實測被擋、gx_fpd 根本沒起來（2026-09-26，16.0 第十二批同一件事）。
+# 改由 init 依屬性值直接啟動（腳本另外那條 `start TEEService` 只在 ro.config.versatility=CN 時跑，這台不是）
+on property:ro.hardware.fingerprint=gx5206
+    start gx_fpd
+
+on property:ro.hardware.fingerprint=gx5216
+    start gx_fpd
+
+# 指紋 HAL（AOSP 從原始碼編的 fingerprint@2.1-service，靠 ro.hardware.fingerprint 載 fingerprint.gx5206.so）。
+# 它自己的 rc 是 class late_start 直接啟動 -> 比 fpseek / gx_fpd 早 -> 打不開 HAL（"Can't open fingerprint
+# HW Module, error: -2"）卻照樣註冊成服務 -> system_server 的 FingerprintProvider NPE、整個 system_server 當掉
+# （2026-09-25 dropbox system_server_crash）。而且 fingerprint.gx5206.so 連不上 daemon 後不會重試。
+# 照 16.0：disabled + interface 宣告，由 hwservicemanager 在第一次 getService 時 interface_start。
+# 這份定義生效靠的是解析順序：本檔由 init.qcom.rc import，比 /vendor/etc/init/ 的
+# android.hardware.biometrics.fingerprint@2.1-service.rc 早解析（kmsg 實測），後者會被當成重複定義忽略。
+service vendor.fps_hal /vendor/bin/hw/android.hardware.biometrics.fingerprint@2.1-service
+    class late_start
+    user system
+    group system input uhid
+    interface android.hardware.biometrics.fingerprint@2.1::IBiometricsFingerprint default
+    disabled
+
+# ---------------------------------------------------------------------------
+# 感測器（ASUS 的 SSC：sensors.qcom，不是 OnePlus 的 sensors.qti）
+# 原廠是兩段式：sensor-sh（init.qcom.sensors.sh）確認 /dev/sensors 存在、整理 /persist/sensors 後 start sensors。
+# 那支腳本跑在 qti_init_shell，`start sensors` 要 ctl.start$sensors 權限 —— enforcing 開機實測被擋、
+# sensors.qcom 沒起來、只剩光線 / 距離兩個感測器（2026-09-26，16.0 第十一批同一件事）。
+# 改由 init 自己做：腳本的內容就是下面這幾行（/dev/sensors 一定在，SSC 平台）
+# ---------------------------------------------------------------------------
+service sensors /vendor/bin/sensors.qcom
+    class core
+    user root
+    group root
+    disabled
+
+# 擁有者照原廠 persist 備份：目錄與 sns.reg 是 root:root（sensors.qcom 跑 root，沒有 dac_read_search ——
+# AOSP 只給少數系統網域，domain.te 的 neverallow）。registry 是 22.2 早期 OnePlus 的 sensors.qti 建的，
+# 原廠沒有；原廠腳本 mkdir -p 以 root 建，這裡同樣給 root（init 的 mkdir 對既有目錄會套用 mode/owner）
+on boot
+    chown root root /persist/sensors
+    chmod 0775 /persist/sensors
+    chown root root /persist/sensors/sns.reg
+    chmod 0664 /persist/sensors/sensors_settings
+    chown system root /persist/sensors/sensors_settings
+    mkdir /persist/sensors/registry 0700 root root
+    mkdir /persist/sensors/registry/registry 0700 root root
+    start sensors
+
+# 光線 / 距離感測器（不走 SSC）：HAL（android.hardware.sensors@1.0-service，user system）要寫這些 sysfs 節點，
+# 預設 root:root -> 開啟時 Permission denied、註冊回 INVALID_OPERATION（自動亮度、通話熄螢幕都沒作用）。
+# 照抄原廠 init.qcom.rc 的 ASUS_BSP 段（OnePlus 的 init.qcom.rc 沒有）
+on boot
+    chown system shell /sys/class/sensors/psensor/switch
+    chown system shell /sys/class/sensors/lsensor/switch
+    chown system shell /sys/class/sensors/frgbsensor/switch
+    chown system shell /sys/class/sensors/psensor/inf_cal
+    chown system shell /sys/class/sensors/psensor/hi_cal
+    chown system shell /sys/class/sensors/psensor/low_cal
+    chown system shell /sys/class/sensors/psensor/proxm
+    chown system shell /sys/class/sensors/psensor/selection
+    chown system shell /sys/class/sensors/lsensor/selection
+    chown system shell /sys/class/sensors/lsensor/cal
+    chown system shell /sys/class/sensors/lsensor/adc
+
+# ---------------------------------------------------------------------------
+# 相機：ASUS 的 RGB 感測器、雷射對焦、Rockchip pre-ISP 的節點權限（原廠 init.asus.rc）
+# ---------------------------------------------------------------------------
+on post-fs
+    chown root camera /dev/asusRgbSensor
+    chmod 0660 /dev/asusRgbSensor
+    chown root camera /dev/asusFRGBSensor
+    chmod 0660 /dev/asusFRGBSensor
+    chown shell camera /dev/LaserSensor
+    chmod 0660 /dev/LaserSensor
+    chown system camera /dev/rk_preisp
+    chmod 0660 /dev/rk_preisp
+
+# ---------------------------------------------------------------------------
+# 3.5mm 耳機孔：從 UART 除錯序列埠切回音訊模式（kernel 的編譯預設是序列埠，g_DebugMode = 1）
+#   checkaudbg.sh  等 /proc/driver/audio_codec_status 就緒，依 ro.boot.pre-ftm 設 persist.asus.audbg
+#   audbg.sh       把 persist.asus.audbg 寫進 /proc/driver/audio_debug（0 = 音訊）
+# 保留兩段式：它同時是逃生門 —— 開不了機又沒 adb 時 setprop persist.asus.audbg 1 就有 kernel console。
+# ⚠ 用 /vendor/bin/sh（vendor_shell_exec）才會轉進 qti_init_shell 網域；/system/bin/sh 會留在 init 網域。
+# ⚠ 腳本本身也要在 /vendor：原廠放 /system/etc，但 vendor 網域讀 system_file 是 neverallow（tools/125 改名安裝）
+# ---------------------------------------------------------------------------
+service asus_checkaudbg /vendor/bin/sh /vendor/bin/init.asus.checkaudbg.sh
+    class late_start
+    user root
+    group root
+    oneshot
+    disabled
+
+service asus_audbg /vendor/bin/sh /vendor/bin/init.asus.audbg.sh
+    class late_start
+    user root
+    group root
+    oneshot
+    disabled
+
+on property:sys.boot_completed=1
+    start asus_checkaudbg
+
+on property:persist.asus.audbg=*
+    start asus_audbg
+
+# ---------------------------------------------------------------------------
+# 射頻功率（SAR）：依收話 / 資料 / 熱點 / 螢幕狀態調整發射功率（原廠 vendor init.qcom.rc）
+# ---------------------------------------------------------------------------
+service sar_setting /vendor/bin/sar_setting
+    class core
+    user radio
+    group radio
+    disabled
+    oneshot
+
+service SARPower-sh /vendor/bin/sh /vendor/bin/WifiSARPower.sh
+    class core
+    user root
+    group root
+    disabled
+    oneshot
+
+on property:sys.asus.sar.audio=*
+    restart sar_setting
+    restart SARPower-sh
+
+on property:sys.asus.sar.data=*
+    restart sar_setting
+
+on property:sys.asus.sar.lte0=*
+    restart sar_setting
+
+on property:sys.asus.sar.lte1=*
+    restart sar_setting
+
+on property:wlan.softap.driver.status=*
+    restart sar_setting
+
+on property:sys.asus.sar.display=*
+    restart sar_setting
+
+# 國碼（原廠 vendor init.qcom.rc：on boot 的最後 start modem-check）
+service modem-check /vendor/bin/modem_country
+    class late_start
+    user bluetooth
+    group net_bt
+    disabled
+    oneshot
+
+on boot
+    start modem-check
+
+# ---------------------------------------------------------------------------
+# 充電：HVDCP 3.0 的最佳化 daemon（原廠 init.target.rc；/mnt/vendor/persist/hvdcp_opti 由 init.qcom.rc 建）
+# ---------------------------------------------------------------------------
+service hvdcp_opti /vendor/bin/hvdcp_opti
+    class main
+    user root
+    group system wakelock
+
+# ---------------------------------------------------------------------------
+# Wi-Fi：WLAN FW 的 BDF。OnePlus 的 cnss-daemon 要 /vendor/firmware/bdwlanc.bin（symlink 到
+# /data/vendor/wifi/bdwlan_z01g.bin），這裡依 ro.boot.id.rf 連到對的 ASUS 檔案（說明在 init.z01g.bdf.sh）。
+# post-fs-data：/data 已掛好，cnss-daemon（late_start）還沒起
+# ---------------------------------------------------------------------------
+on post-fs-data
+    mkdir /data/vendor/wifi 0770 wifi wifi
+    exec - root wifi -- /vendor/bin/sh /vendor/bin/init.z01g.bdf.sh
+
+# ---------------------------------------------------------------------------
+# CPU 調速與排程：跑 ASUS 原廠的 init.qcom.post_boot.sh（16.0 也是這樣）
+#
+# OnePlus 的 init.qcom.rc 寫的是 schedutil 與 /dev/stune（EAS），但這顆 kernel 是 ASUS 系的 HMP
+# （cmdline sched_enable_hmp=1），**沒有 schedutil** -> 寫入失敗，兩個 cluster 都停在 kernel 預設的
+# performance，頻率鎖在最高（1.9 / 2.46 GHz），手機一直溫溫的（2026-09-25，使用者用 DevCheck 發現）。
+# 原廠腳本的 msm8998 段會設 interactive + 調校值、HMP 排程參數、core_ctl、cpubw / memlat devfreq。
+# 實測手動跑一次：大核閒置降到 300 MHz。它寫不到的只有新 kernel 沒有的舊節點（process_reclaim、ondemand）。
+# group 照 16.0（qti_init_shell 要碰 system / wakelock / graphics 擁有的節點，缺了要 dac_override）
+# ---------------------------------------------------------------------------
+service qcom-post-boot /vendor/bin/sh /vendor/bin/init.qcom.post_boot.sh
+    class late_start
+    user root
+    group root system wakelock graphics
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1
+    start qcom-post-boot

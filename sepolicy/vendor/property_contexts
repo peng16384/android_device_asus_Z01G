@@ -1,0 +1,51 @@
+# Bluetooth
+persist.vendor.bt.address              u:object_r:vendor_bluetooth_prop:s0
+ro.vendor.bt.bdaddr_path               u:object_r:vendor_bluetooth_prop:s0
+
+# Camera
+camera.on                              u:object_r:camera_prop:s0
+persist.camera.                        u:object_r:camera_prop:s0
+persist.vendor.camera.                 u:object_r:camera_prop:s0
+vendor.camera.                         u:object_r:camera_prop:s0
+
+# Display
+sdm.disable_hdr_lut_gen                u:object_r:vendor_display_prop:s0
+
+# Fingerprint
+gf.debug.dump_data                     u:object_r:vendor_default_prop:s0
+
+# Firmware
+ro.build.expect.                       u:object_r:exported_default_prop:s0
+
+# Init
+vendor.qcom.devup                      u:object_r:vendor_device_prop:s0
+
+# Mediacodec
+gpu.stats.debug.level                  u:object_r:vendor_video_prop:s0
+
+# RIL
+persist.sys.assert.panic               u:object_r:radio_control_prop:s0
+persist.sys.oem.region                 u:object_r:radio_control_prop:s0
+vendor.oem.device.imeicache0           u:object_r:vendor_radio_prop:s0
+vendor.oem.device.imeicache1           u:object_r:vendor_radio_prop:s0
+
+# Thermal
+sys.thermal.                           u:object_r:thermal_engine_prop:s0
+
+# ASUS（property.te 的說明）
+vendor.asus.fp.hwmodule                u:object_r:asus_fp_hw_prop:s0 exact string
+persist.asus.fp.                       u:object_r:asus_fp_prop:s0
+goodix.                                u:object_r:goodix_fp_prop:s0
+persist.asus.audbg                     u:object_r:asus_audbg_prop:s0 exact string
+camera.app.                            u:object_r:asus_camera_prop:s0
+camera.beautylive.                     u:object_r:asus_camera_prop:s0
+camera.hw.eeprom.                      u:object_r:asus_camera_prop:s0
+persist.asus.pvcabc                    u:object_r:asus_display_pvc_prop:s0 exact string
+persist.np.asus.                       u:object_r:asus_gps_prop:s0
+sys.asus.accelerometer_on              u:object_r:asus_sensors_prop:s0 exact string
+vendor.asus.ssn                        u:object_r:asus_ssn_prop:s0 exact string
+sys.listeners.registered               u:object_r:legacy_tee_listener_prop:s0 exact bool
+sys.post_boot.parsed                   u:object_r:legacy_post_boot_prop:s0 exact string
+ro.additionalbutton.operation          u:object_r:asus_fp_prop:s0 exact string
+# 指紋當 Home 鍵（gxFpDaemon 讀）。原本落在 system_prop（persist.sys. 前綴），vendor 網域讀不到（A15 neverallow）
+persist.sys.fp.navigation              u:object_r:asus_fp_prop:s0 exact string

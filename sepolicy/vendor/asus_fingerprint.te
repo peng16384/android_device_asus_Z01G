@@ -1,0 +1,63 @@
+# Goodix 指紋的兩支閉源 daemon（16.0 sepolicy/vendor/gx_fpd.te 移植）
+#
+# 沒有 exec type 的話整支跑在 init 網域：A15 的 init 在 enforcing 下會直接拒絕啟動
+#   init: File /vendor/bin/fpseek (labeled "u:object_r:vendor_file:s0") has incorrect label
+#         or no domain transition from u:r:init:s0 to another SELinux domain defined.
+# 22.2 permissive 實測：gxFpDaemon 的 attr/current = u:r:init:s0。
+#
+# 啟動鏈（init.target.rc）：fpseek 偵測型號 -> setprop ro.hardware.fingerprint -> fpservice.sh -> start gx_fpd
+# fps_hal（hal_fingerprint_default）與 gx_fpd 之間走 vndbinder（service 名 goodix.fp）
+
+# ---------------------------------------------------------------- gx_fpd（gxFpDaemon）
+type gx_fpd, domain;
+type gx_fpd_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(gx_fpd)
+
+allow gx_fpd goodix_fp_device:chr_file rw_file_perms;
+allow gx_fpd tee_device:chr_file rw_file_perms;      # 比對的 TA 在 TrustZone
+allow gx_fpd ion_device:chr_file rw_file_perms;      # 指紋影像的緩衝區
+allow gx_fpd sysfs_leds:dir search;                  # 辨識時閃指示燈
+
+vndbinder_use(gx_fpd)
+binder_call(gx_fpd, hal_fingerprint_default)
+binder_call(hal_fingerprint_default, gx_fpd)
+add_service(gx_fpd, gx_fpd_vndservice)
+allow hal_fingerprint_default gx_fpd_vndservice:service_manager find;
+
+# 辨識時拉高 CPU 頻率（vendor.qti.hardware.perf::IPerf）
+hal_client_domain(gx_fpd, hal_perf)
+
+# 指紋範本 /data/system/users/*/fpdata（fingerprintd_data_file 是 core 型別）
+typeattribute gx_fpd data_between_core_and_vendor_violators;
+allow gx_fpd fingerprintd_data_file:dir rw_dir_perms;
+allow gx_fpd fingerprintd_data_file:file create_file_perms;
+
+allow gx_fpd self:socket { create read write };
+set_prop(gx_fpd, goodix_fp_prop)
+get_prop(gx_fpd, asus_fp_prop)
+
+# ---------------------------------------------------------------- fpseek
+# oneshot：載 fpseekta 判斷是 gx5206 還是 gx5216，寫 ro.hardware.fingerprint。
+# ⚠ 16.0 的教訓：被擋時**沒有 AVC**、exit code 仍是 0，唯一症狀是 ro.hardware.fingerprint 空的。
+#   rc 必須是 user system group system drmrpc（兩個節點的 owner），否則要 dac_override 而被靜靜擋掉
+type fpseek, domain;
+type fpseek_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(fpseek)
+
+allow fpseek goodix_fp_device:chr_file rw_file_perms;
+allow fpseek tee_device:chr_file rw_file_perms;
+allow fpseek ion_device:chr_file rw_file_perms;
+allow fpseek proc_asus_fingerprint:file r_file_perms;     # /proc/fpmod
+r_dir_file(fpseek, vendor_configs_file)
+r_dir_file(fpseek, firmware_file)
+set_prop(fpseek, asus_fp_hw_prop)
+
+# ---------------------------------------------------------------- fps_hal（hal_fingerprint_default）
+allow hal_fingerprint_default goodix_fp_device:chr_file rw_file_perms;
+vndbinder_use(hal_fingerprint_default)
+# Goodix HAL 讀框架寫的 /data/system/users/0/settings_fingerprint.xml（fingerprint.gx5206.so 的字串）
+allow hal_fingerprint_default system_data_file:dir search;
+allow hal_fingerprint_default system_data_file:file r_file_perms;
+set_prop(hal_fingerprint_default, goodix_fp_prop)
+get_prop(hal_fingerprint_default, asus_fp_hw_prop)
+get_prop(hal_fingerprint_default, asus_fp_prop)

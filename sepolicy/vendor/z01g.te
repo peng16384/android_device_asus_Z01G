@@ -1,0 +1,189 @@
+# Z01G（22.2）專屬的零散授權 —— 第一批（2026-09-26）
+#
+# 來源：permissive 開機實測的 AVC（audit_lost=2864，一定還沒收齊），對照 16.0 的 z01g.te（12 批、
+# enforcing 驗證過）。原則照 16.0：denial 指向通用型別（device / proc / sysfs / default_prop）時，
+# 先在 file_contexts / genfs_contexts / property_contexts 補專屬型別，再只授權那個型別。
+
+###########################################################################
+# 屬性的讀取權（自訂型別 = 拿掉所有人的讀取權，這裡還回去；16.0 第二、八、十二批都踩過）
+###########################################################################
+get_prop(domain, asus_fp_hw_prop)
+get_prop(domain, asus_fp_prop)
+get_prop(domain, goodix_fp_prop)
+get_prop(domain, asus_audbg_prop)
+get_prop(domain, asus_camera_prop)
+get_prop(domain, asus_display_pvc_prop)
+get_prop(domain, asus_gps_prop)
+get_prop(domain, asus_sensors_prop)
+get_prop(domain, legacy_tee_listener_prop)
+get_prop(domain, legacy_post_boot_prop)
+
+# vendor_init 從 build.prop / rc 設這些
+set_prop(vendor_init, asus_fp_prop)            # persist.asus.fp.wakeup（system.prop）
+set_prop(vendor_init, asus_audbg_prop)
+set_prop(vendor_init, asus_camera_prop)
+set_prop(vendor_init, asus_gps_prop)
+set_prop(vendor_init, asus_sensors_prop)
+set_prop(vendor_init, goodix_fp_prop)
+
+###########################################################################
+# /factory（ASUS 出廠寫入的校正資料，唯讀掛載）
+###########################################################################
+allow init { asusfw_file factory_file }:dir mounton;
+r_dir_file(hal_camera_default, factory_file)     # DUT_*.db（三顆鏡頭的校正）、cali_*.txt
+allow hal_camera_default factory_file:file lock;
+r_dir_file(hal_sensors_default, factory_file)    # lsensor.nv、psensor_*.nv、frgbsensor_*.nv
+allow kernel factory_file:file r_file_perms;     # 雷射對焦驅動自己讀 laura_cal_data.txt
+r_dir_file(qti_init_shell, factory_file)         # init.z01g.ssn.sh 讀 SSN
+# installd 會對每個掛載的檔案系統 quotactl；這兩個是唯讀的 ASUS 分割，沒有 quota
+dontaudit installd { asusfw_file factory_file }:filesystem quotaget;
+
+###########################################################################
+# 相機（ASUS 的 camera provider：雷射對焦、RGB 感測器、RK1608 前置 ISP、OIS）
+###########################################################################
+allow hal_camera_default { asus_rgb_sensor_device asus_preisp_device asus_laser_device }:chr_file rw_file_perms;
+allow hal_camera_default proc_asus_camera:file r_file_perms;
+allow hal_camera_default proc_ois_device:file rw_file_perms;
+r_dir_file(hal_camera_default, asusfw_file)      # /asusfw/ois/OIS_programFW.bin
+allow hal_camera_default vendor_file:file lock;  # /vendor/lib/DataSet/ispDB/ParameterDB.db（SQLite 上鎖）
+# /system/etc/preisp_profiles.xml：vendor 網域讀 system_file 是 neverallow -> libpreisp_camera.so 改讀
+# /vendor/etc/preisp.xml（extract-files.py 的二進位替換），不需要規則
+set_prop(hal_camera_default, asus_camera_prop)            # camera.hw.eeprom.candidate
+set_prop(hal_camera_default, asus_display_pvc_prop)       # persist.asus.pvcabc
+
+###########################################################################
+# 感測器
+###########################################################################
+# 光線 / 距離（ALSPS HAL）：寫 switch、讀校正；init 在 on boot 把 switch 等 chown 給 system
+allow hal_sensors_default sysfs_asus_sensors:dir r_dir_perms;
+allow hal_sensors_default sysfs_asus_sensors:file rw_file_perms;
+allow init sysfs_asus_sensors:file setattr;
+set_prop(hal_sensors_default, asus_sensors_prop)          # sys.asus.accelerometer_on
+# 感測器 HAL fork sh 跑 /vendor/bin/sns_dump_request 收 dump（診斷用），擋掉不影響運作（16.0 同結論）
+dontaudit hal_sensors_default sensors_test_exec:file execute_no_trans;
+# sensors.qcom 自己 drop 成 nobody 後想開 /dev/diag（1000:2901 0660）——QXDM 記錄，刻意不給（16.0 查過）
+dontaudit sensors self:capability dac_override;
+
+###########################################################################
+# 充電 / 電池 / LED
+###########################################################################
+allow hvdcp sysfs_batteryinfo:dir search;
+allow hvdcp sysfs_batteryinfo:file r_file_perms;
+allow init sysfs_leds:file setattr;              # init.qcom.rc chown button-backlight
+
+###########################################################################
+# GNSS（ASUS 的 gnss@1.0-impl-qti，由 AOSP 的 gnss@1.0-service 載入）
+###########################################################################
+# （GNSS 的屬性寫入在第四批：網域已改成 hal_gnss_qti）
+
+###########################################################################
+# thermal-engine：讀相機溫度 /proc/driver/camera_temp
+###########################################################################
+allow thermal-engine proc_asus_camera:file r_file_perms;
+
+###########################################################################
+# qti_init_shell（init 用 /vendor/bin/sh 跑的腳本）
+###########################################################################
+# 耳機孔 UART/音訊切換：init.asus.{checkaudbg,audbg}.sh（原廠在 /system/etc，已改裝到 /vendor/bin ——
+# vendor 網域讀 system_file 是 neverallow）。讀 audio_codec_status、寫 audio_debug
+set_prop(qti_init_shell, asus_audbg_prop)
+allow qti_init_shell proc_audio_debug:file rw_file_perms;
+# USB 序號：腳本不直接 setprop ro.serialno（serialno_prop 只有 init 能寫），改交給 init（init.qcom.usb.rc）
+set_prop(qti_init_shell, asus_ssn_prop)
+# Wi-Fi BDF 選擇（init.z01g.bdf.sh 在 /data/vendor/wifi 建 symlink）
+allow qti_init_shell wifi_vendor_data_file:dir create_dir_perms;
+allow qti_init_shell wifi_vendor_data_file:lnk_file { create read rename unlink getattr };
+allow qti_init_shell wifi_vendor_data_file:file { create open read write unlink getattr };
+# init.qcom.post_boot.sh 調 VM 參數
+allow qti_init_shell proc_dirty_ratio:file { open write };
+allow qti_init_shell proc_page_cluster:file { open write };
+# post_boot 想設 dalvik.vm.heapminfree —— dalvik_config_prop 只准 init / vendor_init 寫（neverallow），
+# 值由 device.mk 的 phone-xhdpi-6144-dalvik-heap.mk 給，擋掉不影響
+dontaudit qti_init_shell dalvik_config_prop:property_service set;
+
+# cnss-daemon 讀 /vendor/firmware/bdwlanc.bin -> /data/vendor/wifi/bdwlan_z01g.bin 這條 symlink
+allow wcnss_service wifi_vendor_data_file:lnk_file read;
+
+
+###########################################################################
+# 第二批（第一批刷入後的乾淨開機：33 條，audit_lost 2864 -> 1 —— 上一輪幾乎全是 init 網域那三支洗掉的）
+###########################################################################
+# --- 屬性的讀取
+# ⚠ A15 不管 shipping API 多少，一律禁止 vendor 網域讀系統側的屬性型別（default_prop / config_prop /
+#   system_prop / audio_prop / persist_debug_prop / wifi_prop… —— system/sepolicy/private/property.te 的
+#   neverallow），16.0 那種 get_prop(x, default_prop) 編不過。
+#   讀取的 AVC 不帶屬性名，所以用 `getprop -Z` 列出這些型別底下**實際存在**的屬性逐一對：
+#   - 真的有在用的 -> 在 vendor 側給專屬型別（persist.sys.fp.navigation、ro.additionalbutton.operation -> asus_fp_prop）
+#   - 其餘都是查「沒設的屬性」（這些型別底下幾乎沒有東西）：讀不到 = 沒設，行為一樣 -> dontaudit
+dontaudit { hal_camera_default hvdcp location qti_init_shell } default_prop:file { getattr open read map };
+dontaudit { hal_camera_default qti_init_shell } config_prop:file { getattr open read map };
+dontaudit hal_camera_default persist_debug_prop:file { getattr open read map };
+dontaudit hal_audio_default audio_prop:file { getattr open read map };
+dontaudit thermal-engine system_prop:file { getattr open read map };
+# vendor.* 的通用型別 App 不准讀（property.te 的 neverallow）；OnePlus 的資料服務 App 查 persist.vendor.data.*
+dontaudit vendor_dataservice_app vendor_default_prop:file { getattr open read map };
+get_prop(qtidataservices_app, vendor_default_prop)
+# init.target.rc 的 on property:wlan.softap.driver.status=*（SAR）：vendor_init 不准讀 wifi_prop。
+# 觸發本身由 init 評估，照樣有效；sar_setting 平常也不會被觸發（見 asus_sar.te）
+dontaudit vendor_init wifi_prop:file { getattr open read map };
+
+get_prop(vendor_init, asus_ssn_prop)             # init.qcom.usb.rc 的 ${vendor.asus.ssn}（vendor rc 由 vendor_init 執行）
+get_prop(vendor_init, vendor_tee_listener_prop)  # init.target.rc 的 ${vendor.sys.listeners.registered}
+set_prop(vendor_init, legacy_tee_listener_prop)  # setprop sys.listeners.registered（init.target.rc on post-fs）
+
+# --- gx_fpd 讀螢幕背光（螢幕關著時的行為不同）
+allow gx_fpd sysfs_graphics:dir search;
+allow gx_fpd sysfs_graphics:file r_file_perms;
+
+# --- thermal-engine：望遠鏡頭的溫度（genfs_contexts 補 camera2_temp）
+# （proc_asus_camera 第一批已授權）
+
+# --- qti_init_shell（init.qcom.post_boot.sh）
+set_prop(qti_init_shell, legacy_post_boot_prop)  # sys.post_boot.parsed
+# pm.dexopt.install —— 只准 init / system_server 寫（domain.te 的 neverallow）；AOSP 的預設值照用（16.0 同結論）
+dontaudit qti_init_shell exported_pm_prop:property_service set;
+
+###########################################################################
+# dontaudit（第二批）—— 擋掉是對的
+###########################################################################
+# A15 的 composer 先在 vndservicemanager 找 AIDL 的 IAllocator，找不到就退回 HIDL（這台只有 HIDL allocator）
+dontaudit hal_graphics_composer_default default_android_vndservice:service_manager find;
+# OnePlus 的 rild 試著從 vndservicemanager 找 ISystemSuspend（AIDL 版在 servicemanager），找不到就退回
+dontaudit rild default_android_vndservice:service_manager find;
+
+# 設定 App 的 AsyncTask 對音訊 HAL 下 binder call（沒有功能靠它；App 不該直接呼叫 HAL）。hal_audio_default 是 vendor 型別，放這裡
+dontaudit system_app hal_audio_default:binder call;
+
+###########################################################################
+# 第二批之二 —— 第一批上執行期 setenforce 1、實測 8 項功能（都正常）時被擋的（permissive=0）
+###########################################################################
+# 雷射對焦驅動讀 /factory/laura_cal_data.txt：第一批只給了 file，漏了 dir search（16.0 犯過三次的同一個錯）
+allow kernel factory_file:dir search;
+# 相機 HAL 的 AEC/AWB 執行緒找 /data 底下 App 的 data 目錄（debug dump 的位置）；相機照常運作。
+# 讓 vendor 的相機 HAL 進 App 資料目錄不合理 -> 擋著
+dontaudit hal_camera_default system_data_file:dir search;
+# 同 composer：先在 vndservicemanager 找 AIDL 的 IAllocator，找不到退回 HIDL
+dontaudit hal_camera_default default_android_vndservice:service_manager find;
+
+###########################################################################
+# 第三批 —— 第一次 enforcing 開機（2026-09-26）
+#
+# 成果：開到桌面、Wi-Fi / SIM / 音效卡 / keymaster / qseecomd 都正常，沒有行程留在 init 網域。
+# 被擋的是三個 ctl.start$<服務>（qti_init_shell 的腳本 `start xxx`）：
+#   gx_fpd、sensors -> init.target.rc 改由 init 自己 start（不給腳本啟動服務的權限）
+#   iop             -> init.qcom.post_boot.sh 想啟動，但這棵樹根本沒有 iop 服務（效能堆疊是 OnePlus 的）。
+#                      給了權限也只會「service not found」；刻意不 dontaudit，每次開機一行（同 16.0 的 lcd_density）
+###########################################################################
+# Widevine HAL 找 /factory/wv.keys（L1 的 keybox 安裝檔，這台沒有）：給 search，讓它拿到 ENOENT 照常退 L3
+allow hal_drm_widevine factory_file:dir search;
+# 指紋 HAL 查 default_prop 底下沒設的屬性（permissive 最後一輪僅剩的一條；讀不到 = 沒設）
+dontaudit hal_fingerprint_default default_prop:file { getattr open read map };
+
+###########################################################################
+# 第四批 —— 第三批（enforcing）開機後
+###########################################################################
+# GNSS 改標 hal_gnss_qti 之後，原本給 hal_gnss_default 的屬性寫入要跟過來（persist.np.asus.gps.engstate；
+# 被擋在 property_service 的 socket 那一步，12 次）
+set_prop(hal_gnss_qti, asus_gps_prop)
+# 音訊 HAL（ASUS 的 libacdbloader）先找 /asusfw/audio/acdbdata/<ro.build.product>，找不到再退 /vendor（16.0 有這條，漏抄）
+r_dir_file(hal_audio_default, asusfw_file)

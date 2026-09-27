@@ -1,0 +1,31 @@
+diff --git a/tools/fs_config/Android.bp b/tools/fs_config/Android.bp
+index a5b6fd0..ee789e3 100644
+--- a/tools/fs_config/Android.bp
++++ b/tools/fs_config/Android.bp
+@@ -278,12 +278,16 @@ genrule_defaults {
+ }
+ 
+ // system
++// Z01G: no vendor partition (TARGET_COPY_OUT_VENDOR := system/vendor), so the vendor/ entries of
++// config.fs must go into the system file. With "vendor" in --all-partitions they are dropped here,
++// and the vendor file is looked up at $(PRODUCT_OUT)/vendor/etc/, which never exists on this device
++// -> every system/vendor/bin/* got capabilities=0x0 (pm-service spun forever on msm_ipc_router_bind).
+ genrule {
+     name: "fs_config_dirs_system_gen",
+     defaults: ["fs_config_defaults"],
+     cmd: fs_config_cmd_dirs +
+         "--partition system " +
+-        "--all-partitions vendor,oem,odm,vendor_dlkm,odm_dlkm,system_dlkm " +
++        "--all-partitions oem,odm,vendor_dlkm,odm_dlkm,system_dlkm " +
+         "$(locations :target_fs_config_gen)",
+ }
+ 
+@@ -298,7 +302,7 @@ genrule {
+     defaults: ["fs_config_defaults"],
+     cmd: fs_config_cmd_files +
+         "--partition system " +
+-        "--all-partitions vendor,oem,odm,vendor_dlkm,odm_dlkm,system_dlkm " +
++        "--all-partitions oem,odm,vendor_dlkm,odm_dlkm,system_dlkm " +
+         "$(locations :target_fs_config_gen)",
+ }
+ 

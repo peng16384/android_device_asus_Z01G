@@ -1,0 +1,2 @@
+# 必須放在 private（product）的標記：網域的型別要引用 private 型別（見 modem_country.te）
+/(vendor|system/vendor)/bin/modem_country      u:object_r:modem_country_exec:s0

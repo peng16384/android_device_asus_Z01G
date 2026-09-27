@@ -1,0 +1,43 @@
+genfscon debugfs /system_stats         u:object_r:debugfs_rpm:s0
+userdebug_or_eng(`
+  genfscon debugfs /rmt_storage/rmts     u:object_r:qti_debugfs:s0
+  genfscon debugfs /msm_core             u:object_r:qti_debugfs:s0
+')
+
+genfscon proc /touchpanel              u:object_r:proc_touchpanel:s0
+genfscon proc /tri-state-key           u:object_r:proc_touchpanel:s0
+genfscon proc /sys/kernel/boot_reason  u:object_r:proc_alarm_boot:s0
+
+# ASUS 驅動的 proc 節點（22.2 permissive 實測落在通用的 proc）
+genfscon proc /fpmod                                   u:object_r:proc_asus_fingerprint:s0
+genfscon proc /driver/audio_debug                      u:object_r:proc_audio_debug:s0
+genfscon proc /driver/audio_codec_status               u:object_r:proc_audio_debug:s0
+genfscon proc /driver/ois_device                       u:object_r:proc_ois_device:s0
+genfscon proc /driver/rear_otp                         u:object_r:proc_asus_camera:s0
+genfscon proc /driver/rear2_otp                        u:object_r:proc_asus_camera:s0
+genfscon proc /driver/front_otp                        u:object_r:proc_asus_camera:s0
+genfscon proc /driver/dualcam_cali                     u:object_r:proc_asus_camera:s0
+genfscon proc /driver/FrontModule                      u:object_r:proc_asus_camera:s0
+genfscon proc /driver/RearModule                       u:object_r:proc_asus_camera:s0
+genfscon proc /driver/LaserFocus_Status_For_Camera     u:object_r:proc_asus_camera:s0
+genfscon proc /driver/camera_temp                      u:object_r:proc_asus_camera:s0
+genfscon proc /driver/camera2_temp                     u:object_r:proc_asus_camera:s0
+
+# 光線 / 距離 / 前 RGB 感測器（ASUS 的 ALSPS 驅動；HAL 寫 switch、讀校正值）
+genfscon sysfs /devices/virtual/sensors                u:object_r:sysfs_asus_sensors:s0
+# 並聯充電 IC（SMB1381）的 power_supply：health HAL 與 hvdcp_opti 會讀
+genfscon sysfs /devices/soc/c1b6000.i2c/i2c-8/8-0008/c1b6000.i2c:qcom,smb138x@8:qcom,smb1381-charger@1000/power_supply    u:object_r:sysfs_batteryinfo:s0
+# PMI8998 的 LED（button-backlight 等；light HAL 讀寫）。rgb_blink 另有更精確的標記，不受影響
+genfscon sysfs /devices/soc/800f000.qcom,spmi/spmi-0/spmi0-03/800f000.qcom,spmi:qcom,pmi8998@3:qcom,leds@d000/leds    u:object_r:sysfs_leds:s0
+
+genfscon sysfs /devices/soc/soc:fingerprint_detect/sensor_version    u:object_r:sysfs_fp_detect:s0
+genfscon sysfs /devices/virtual/graphics/fb0                         u:object_r:sysfs_graphics:s0
+
+# LiveDisplay
+genfscon sysfs /devices/virtual/graphics/fb0/num_presets             u:object_r:sysfs_livedisplay_tuneable:s0
+genfscon sysfs /devices/virtual/graphics/fb0/preset                  u:object_r:sysfs_livedisplay_tuneable:s0
+
+genfscon sysfs /project_info                                         u:object_r:sysfs_project_info:s0
+
+genfscon sysfs /devices/soc/800f000.qcom,spmi/spmi-0/spmi0-02/800f000.qcom,spmi:qcom,pmi8998@2:gpio-leds/leds/button-backlight/brightness    u:object_r:sysfs_graphics:s0
+genfscon sysfs /devices/soc/800f000.qcom,spmi/spmi-0/spmi0-03/800f000.qcom,spmi:qcom,pmi8998@3:qcom,leds@d000/leds/rgb/rgb_blink    u:object_r:sysfs_graphics:s0

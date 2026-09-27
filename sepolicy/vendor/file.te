@@ -1,0 +1,22 @@
+type debugfs_rpm, fs_type, debugfs_type;
+type proc_alarm_boot, fs_type, proc_type;
+type proc_touchpanel, fs_type, proc_type;
+type sysfs_fp_detect, fs_type, sysfs_type;
+type sysfs_project_info, fs_type, sysfs_type;
+type sysfs_wifi, fs_type, sysfs_type;
+
+# /asusfw —— ASUS 的校正資料分割（sda17, 64 MB ext4）：音訊 acdb / mixer_paths、TAS2557 韌體、OIS 韌體。
+# 裡面沒有 security.selinux xattr，靠 fstab 的 context= 整個標記。
+# ⚠ 是 fs_type 不是 file_type：寫成 file_type 會吃到 init / vendor_init 的萬用檔案規則，
+#   撞上 domain.te 的 neverallow * contextmount_type:dir_file_class_set { create ... }（16.0 實測）
+type asusfw_file, fs_type, contextmount_type;
+
+# /factory —— ASUS 的工廠資料分割（sdg1, 20 MB ext4），唯讀掛載；目前只用 SSN（USB 序號）。理由同上
+type factory_file, fs_type, contextmount_type;
+
+# ASUS 驅動的 proc / sysfs 節點（原本落在通用的 proc / sysfs；16.0 sepolicy/vendor/file.te）
+type proc_asus_camera, fs_type, proc_type;       # /proc/driver/{rear,rear2,front}_otp、dualcam_cali、*Module、camera_temp…
+type proc_ois_device, fs_type, proc_type;        # /proc/driver/ois_device（OIS 控制，要寫）
+type proc_asus_fingerprint, fs_type, proc_type;  # /proc/fpmod（fpseek 判斷 Goodix 型號）
+type proc_audio_debug, fs_type, proc_type;       # /proc/driver/audio_debug（耳機孔 UART/音訊切換）
+type sysfs_asus_sensors, fs_type, sysfs_type;    # /sys/devices/virtual/sensors（光線 / 距離 / 前 RGB）

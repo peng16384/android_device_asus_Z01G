@@ -1,0 +1,8 @@
+# 讀 /factory（ASUS 出廠寫入的裝置資料，唯讀掛載）
+
+# Wi-Fi MAC：qcacld 的 request_firmware("wlan/qca_cld/wlan_mac.bin") 由 ueventd 代讀，
+# 那條 symlink 指向 /factory/wlan_mac.bin
+r_dir_file(ueventd, factory_file)
+
+# 藍牙位址：ASUS 的 libbtnv 讀 /factory/bt_nv.bin
+r_dir_file(hal_bluetooth_qti, factory_file)

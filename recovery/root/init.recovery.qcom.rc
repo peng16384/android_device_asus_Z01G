@@ -1,0 +1,13 @@
+on fs
+    wait /dev/block/platform/soc/1da4000.ufshc
+    symlink /dev/block/platform/soc/1da4000.ufshc /dev/block/bootdevice
+
+on init
+    setprop sys.usb.controller "a800000.dwc3"
+    setprop sys.usb.configfs 1
+    # 這台的 bootloader 不傳 androidboot.serialno（正常開機由 init.z01g.ssn.sh 從 /factory/SSN 補上，
+    # recovery 沒有那一段）。ro.serialno 空的 -> recovery 的 init.rc 在 on fs 寫進 USB 的序號字串是空的
+    # -> Windows 的 adb 讀序號失敗（usb_windows.cpp「cannot get serial number」87）而整台略過：
+    # 裝置管理員看得到 ADB 介面，adb devices 卻是空的，連 sideload 都不能用（2026-09-27）。
+    # 固定字串就夠了（真的序號在 /factory，要掛載才讀得到）；也不帶個資進 ROM。
+    setprop ro.serialno Z01G

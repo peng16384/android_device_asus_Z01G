@@ -1,0 +1,20 @@
+# focal-touchscreen.kl —— 來源是原廠 /system/usr/keylayout/focal-touchscreen.kl，
+# 由 tools/58_gen_keylayout.py 濾掉 AOSP 不認得的 keycode 標籤後產生。
+#
+# KeyLayoutMap.cpp 的 parseKey() 遇到不認得的標籤會 return BAD_VALUE，
+# **整個檔案作廢**並退回 Generic.kl —— 所以不能直接抄原廠的。
+#
+# 這個檔案被濾掉的行（ASUS 自己加在 framework 裡的 keycode）：
+#   key 116   GESTURE_DOUBLE_CLICK
+#   key 103   GESTURE_SWIPE_UP
+#   key 17    GESTURE_W
+#   key 31    GESTURE_S
+#   key 18    GESTURE_E
+#   key 46    GESTURE_C
+#   key 44    GESTURE_Z
+#   key 47    GESTURE_V
+# 要支援這些手勢的話，正規做法是寫 device key handler 接原始 scancode。
+
+key 158    BACK               VIRTUAL
+key 139    APP_SWITCH         VIRTUAL
+key 102    HOME               VIRTUAL

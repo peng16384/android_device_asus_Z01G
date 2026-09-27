@@ -1,0 +1,17 @@
+# recovery 用的 fstab（TARGET_RECOVERY_FSTAB）—— ASUS ZenFone 4 Pro (ZS551KL / Z01G)
+#
+# 為什麼不直接用 fstab.qcom：OTA 產生器（ota_from_target_files）拿這份的裝置路徑寫進 updater-script。
+# fstab.qcom 的 /system 必須是 /dev/block/by-name/system（first stage init 只有它），但這台的
+# TWRP 3.7.0 不保證有 /dev/block/by-name；16.0 的 zip 用 /dev/block/bootdevice/by-name/system
+# 在 TWRP 上實刷過。LineageOS 自己的 recovery 也有 bootdevice（recovery/root/init.recovery.qcom.rc 的 on fs）。
+#
+#<src>                                                       <mnt_point>   <type>  <mnt_flags and options>                                        <fs_mgr_flags>
+/dev/block/bootdevice/by-name/boot                           /boot         emmc    defaults                                                       defaults
+/dev/block/bootdevice/by-name/recovery                       /recovery     emmc    defaults                                                       defaults
+/dev/block/bootdevice/by-name/misc                           /misc         emmc    defaults                                                       defaults
+/dev/block/bootdevice/by-name/system                         /system       ext4    ro,barrier=1,discard                                           wait
+/dev/block/bootdevice/by-name/userdata                       /data         ext4    nosuid,nodev,noatime,barrier=1,noauto_da_alloc,discard         wait,check,quota,reservedsize=128M
+/dev/block/bootdevice/by-name/cache                          /cache        ext4    nosuid,nodev,noatime,barrier=1                                 wait,check,formattable
+
+/devices/soc/c0a4900.sdhci/mmc_host*                         auto          auto    defaults                                                       voldmanaged=sdcard1:auto
+/devices/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb* auto          auto    defaults                                                       voldmanaged=usb:auto

@@ -1,0 +1,63 @@
+diff --git a/libs/binder/Parcel.cpp b/libs/binder/Parcel.cpp
+index 7c1646a..6eb68ca 100644
+--- a/libs/binder/Parcel.cpp
++++ b/libs/binder/Parcel.cpp
+@@ -102,10 +102,11 @@ using binder::borrowed_fd;
+ using binder::unique_fd;
+ 
+ // many things compile this into prebuilts on the stack
++// Z01G: must not exceed what the oldest vendor blob reserves -- Android 8.0's 104 bytes (see Parcel.h)
+ #ifdef __LP64__
+-static_assert(sizeof(Parcel) == 120);
++static_assert(sizeof(Parcel) == 104);
+ #else
+-static_assert(sizeof(Parcel) == 60);
++static_assert(sizeof(Parcel) <= 60);
+ #endif
+ 
+ static std::atomic<size_t> gParcelGlobalAllocCount;
+diff --git a/libs/binder/include/binder/Parcel.h b/libs/binder/include/binder/Parcel.h
+index 0c7366e..54b2e61 100644
+--- a/libs/binder/include/binder/Parcel.h
++++ b/libs/binder/include/binder/Parcel.h
+@@ -1322,6 +1322,19 @@ private:
+     private:
+ 
+     status_t            mError;
++    // Z01G: these four bools used to sit after mVariantFields (+ 4 bytes of padding there, + 4 after
++    // mError). Packed into mError's padding and with the unused mReserved gone, the LP64 Parcel is
++    // back to Android 8.0's 104 bytes. Vendor blobs built against Oreo headers put Parcel on the
++    // stack with 104 bytes reserved; A15's 120-byte constructor then overran the frame (ASUS
++    // libfp_client: "stack corruption detected" in BpFingerPrintService::connect, 2026-09-25).
++    // Smaller is safe for everything else: code built against the 120-byte layout just has spare room.
++    bool                mAllowFds;
++    // if this parcelable is involved in a secure transaction, force the
++    // data to be overridden with zero when deallocated
++    mutable bool        mDeallocZero;
++    // Set this to false to skip dataAvail checks.
++    bool mEnforceNoDataAvail;
++    bool mServiceFuzzing;
+     uint8_t*            mData;
+     size_t              mDataSize;
+     size_t              mDataCapacity;
+@@ -1377,20 +1390,8 @@ private:
+     RpcFields* maybeRpcFields() { return std::get_if<RpcFields>(&mVariantFields); }
+     const RpcFields* maybeRpcFields() const { return std::get_if<RpcFields>(&mVariantFields); }
+ 
+-    bool                mAllowFds;
+-
+-    // if this parcelable is involved in a secure transaction, force the
+-    // data to be overridden with zero when deallocated
+-    mutable bool        mDeallocZero;
+-
+-    // Set this to false to skip dataAvail checks.
+-    bool mEnforceNoDataAvail;
+-    bool mServiceFuzzing;
+-
+     release_func        mOwner;
+ 
+-    size_t mReserved;
+-
+     class Blob {
+     public:
+         LIBBINDER_EXPORTED Blob();

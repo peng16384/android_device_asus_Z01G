@@ -1,0 +1,9 @@
+on boot
+    # timed_output 的 enable 預設 root 0644；服務跑 system
+    chown system system /sys/class/timed_output/vibrator/enable
+    chmod 0664 /sys/class/timed_output/vibrator/enable
+
+service vendor.vibrator.z01g /vendor/bin/hw/android.hardware.vibrator-service.z01g
+    class hal
+    user system
+    group system

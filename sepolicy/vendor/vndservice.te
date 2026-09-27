@@ -1,0 +1,3 @@
+# gxFpDaemon 在 vndservicemanager 註冊的 goodix.fp（名稱取自 AVC 原文的 service= 欄位）。
+# AOSP 禁止用通用的 default_android_vndservice（neverallow * default_android_vndservice:service_manager { add find }）
+type gx_fpd_vndservice, vndservice_manager_type;

@@ -1,0 +1,17 @@
+# sar_setting —— 依通話 / 資料 / 熱點 / 螢幕狀態調整射頻發射功率（16.0 sepolicy/vendor/sar_setting.te 移植）
+#
+# init.target.rc：disabled oneshot，由 on property:sys.asus.sar.*=* / wlan.softap.driver.status=* restart。
+# 原廠設 sys.asus.sar.* 的是 ASUS 自己的系統服務（我們沒有），所以平常不會跑；但沒有網域的話，
+# 一被觸發 A15 的 init 就會拒絕啟動 -> 給它網域。
+#
+# 與 16.0 的差異：不給 wifi_prop（它讀 wlan.* 判斷熱點）—— A15 禁止 vendor 網域讀系統側屬性型別
+type sar_setting, domain;
+type sar_setting_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(sar_setting)
+
+allow sar_setting sysfs_data:file r_file_perms;             # /sys/devices/soc/.../subsysN/name
+allow sar_setting sysfs_graphics:file r_file_perms;         # 螢幕狀態
+allow sar_setting sysfs_graphics:lnk_file r_file_perms;
+# 自己開 socket 下 ioctl（號碼取自 16.0 的 AVC ioctlcmd=；裸的 allow ioctl 撞 domain.te 的 neverallowxperm）
+allow sar_setting self:socket { create read write ioctl };
+allowxperm sar_setting self:socket ioctl { 0xc302 0xc304 };

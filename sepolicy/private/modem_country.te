@@ -1,0 +1,13 @@
+# modem_country —— 依國家碼設定 modem（init.target.rc 的 modem-check，user bluetooth group net_bt）
+# 沒有 exec type 時跑在 init 網域（22.2 實測 init 拒絕網域轉換的訊息，見 vendor/asus_fingerprint.te 開頭）。
+#
+# ⚠ 放 private/ 而不是 vendor/：它要碰的 /dev/smd7 是 vendor_smd7_device，宣告在
+#   device/qcom/sepolicy-legacy-um/qva/private（SYSTEM_EXT_PRIVATE），vendor 側看不到（16.0 也是這樣）
+type modem_country, domain;
+type modem_country_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(modem_country)
+
+allow modem_country vendor_smd7_device:chr_file rw_file_perms;
+
+# 查沒設的 config_prop 屬性（getprop -Z：config_prop 底下沒有任何實際存在的屬性）；vendor 網域讀不到（A15 neverallow）
+dontaudit modem_country config_prop:file { getattr open read map };

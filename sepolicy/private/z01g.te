@@ -1,0 +1,12 @@
+# 平台（system_server、設定 App）網域的規則：型別都是 AOSP 的，放 private（product）
+#
+# 設定 App 的「記憶體」頁讀 zram 的 mm_stat（16.0 同一條）
+allow system_app sysfs_zram:dir search;
+allow system_app sysfs_zram:file r_file_perms;
+# 同一頁還讀 /proc/vmallocinfo、找 suspend_control / tracing.proxy —— 這些是給系統服務的，App 讀不到只是少一項數字
+dontaudit system_app proc_vmallocinfo:file { getattr open read };
+dontaudit system_app { system_suspend_control_service system_suspend_control_internal_service tracingproxy_service }:service_manager find;
+# ro.bootimage.build.*：system_server 查 boot image 的建置資訊（非 Treble 的 boot.img 沒有 ramdisk 的 build.prop，讀到空值）
+dontaudit system_server build_bootimage_prop:file { getattr open read };
+# cameraserver 查 vendor_default_prop 底下沒設的屬性（系統側不准讀 vendor 的通用型別；讀不到 = 沒設）
+dontaudit cameraserver vendor_default_prop:file { getattr open read map };

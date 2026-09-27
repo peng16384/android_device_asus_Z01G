@@ -1,0 +1,11 @@
+# 編譯產物
+out/
+*.img
+*.zip
+*.tar.gz
+__pycache__/
+*.pyc
+
+# 編輯器
+*.swp
+.DS_Store

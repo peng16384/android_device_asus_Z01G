@@ -1,0 +1,21 @@
+diff --git a/audio/common/all-versions/default/service/service.cpp b/audio/common/all-versions/default/service/service.cpp
+index 1557a95..76c6d65 100644
+--- a/audio/common/all-versions/default/service/service.cpp
++++ b/audio/common/all-versions/default/service/service.cpp
+@@ -75,7 +75,15 @@ static bool registerExternalServiceImplementation(const std::string& libName,
+ int main(int /* argc */, char* /* argv */ []) {
+     signal(SIGPIPE, SIG_IGN);
+ 
+-    if (::android::ProcessState::isVndservicemanagerEnabled()) {
++    // Z01G (non-Treble, vendor in /system): the legacy linker config has one namespace, so this
++    // binary and libbinder_ndk (LLNDK) load the same libbinder.so and share ONE ProcessState.
++    // Opening it on /dev/vndbinder here would (1) make ABinderProcess_setThreadPoolMaxThreadCount(1)
++    // below abort ("Binder threadpool cannot be shrunk after starting"), and (2) register every
++    // AIDL service of this process -- e.g. android.hardware.bluetooth.audio's
++    // IBluetoothAudioProviderFactory -- with vndservicemanager, where the framework never finds
++    // it (Bluetooth then waits forever). On Treble devices these are two separate ProcessStates.
++    if (::android::ProcessState::isVndservicemanagerEnabled() &&
++        property_get_bool("ro.treble.enabled", true)) {
+         ::android::ProcessState::initWithDriver("/dev/vndbinder");
+         ::android::ProcessState::self()->startThreadPool();
+     }

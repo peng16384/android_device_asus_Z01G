@@ -1,0 +1,44 @@
+# Android fstab file — ASUS ZenFone 4 Pro (ZS551KL / Z01G)，LineageOS 22.2
+#
+# 以 OnePlus msm8998-common（22.2）的為底，差異：
+#   1. 沒有 /vendor 條目：這台沒有 vendor 分割區，vendor 在 system image 裡
+#      （/vendor -> /system/vendor 是 system image 自己帶的 symlink）
+#   2. /data 先不加密（見下）
+#   3. 加 /asusfw（ASUS 的音訊校正、功放韌體、OIS 韌體）
+#   4. 加 microSD（OnePlus 5 沒有）
+# 一份同時給 first stage（ramdisk，fstab.qcom.ramdisk）、second stage 的 mount_all 與 recovery。
+#
+# 分割區：system sda19 / userdata sda20 / cache sda18 / persist sda2 / asusfw sda17
+#         modem sde5 / bluetooth sde6 / dsp sda12 / misc sda3
+#
+# /data 不加密：Android 13 起 vold 已移除 FDE（16.0 用過的 encryptable=footer 不再支援）。
+#   FBE（fileencryption=ice）要 kernel ICE + ASUS 的 keymaster 整條都對才開得了機，
+#   bring-up 期間先不開，能穩定開機後再加。
+#
+#<src>                                                       <mnt_point>               <type>  <mnt_flags and options>                                                                              <fs_mgr_flags>
+/dev/block/bootdevice/by-name/boot                           /boot                     emmc    defaults                                                                                             recoveryonly
+/dev/block/bootdevice/by-name/recovery                       /recovery                 emmc    defaults                                                                                             recoveryonly
+
+# first stage 只有 /dev/block/by-name（boot device 取自 cmdline 的 androidboot.boot_devices，
+# BoardConfig.mk 補的）；/dev/block/bootdevice 是 second stage 的 init.qcom.rc 才建
+/dev/block/by-name/system                                    /system                   ext4    ro,barrier=1,discard                                                                                 wait,first_stage_mount
+
+/dev/block/bootdevice/by-name/userdata                       /data                     ext4    nosuid,nodev,noatime,barrier=1,noauto_da_alloc,discard                                               wait,check,latemount,quota,reservedsize=128M
+/dev/block/bootdevice/by-name/cache                          /cache                    ext4    nosuid,nodev,noatime,barrier=1                                                                       wait,check,formattable
+/dev/block/bootdevice/by-name/misc                           /misc                     emmc    defaults                                                                                             defaults
+/dev/block/bootdevice/by-name/modem                          /vendor/firmware_mnt      vfat    ro,shortname=lower,uid=1000,gid=1000,dmask=227,fmask=337,context=u:object_r:firmware_file:s0         wait
+/dev/block/bootdevice/by-name/bluetooth                      /vendor/bt_firmware       vfat    ro,shortname=lower,uid=1002,gid=3002,dmask=222,fmask=333,context=u:object_r:bt_firmware_file:s0      wait
+/dev/block/bootdevice/by-name/dsp                            /vendor/dsp               ext4    ro,nosuid,nodev,barrier=1                                                                            wait
+/dev/block/bootdevice/by-name/persist                        /mnt/vendor/persist       ext4    noatime,nosuid,nodev,barrier=1                                                                       wait
+# /asusfw 沒有 SELinux xattr -> 用 context= 標記（16.0 SELinux 教訓 6）。依安全規則唯讀；
+# noload：journal 需要 recovery 時也不寫入（ro 掛 ext4 預設仍會重放 journal）
+/dev/block/bootdevice/by-name/asusfw                         /asusfw                   ext4    ro,nosuid,nodev,noatime,noload,context=u:object_r:asusfw_file:s0                                     wait
+# /factory（sdg1, 20 MB ext4）：裝置序號 SSN 在這裡（bootloader 不傳 androidboot.serialno），
+# init.qcom.usb.rc 拿它當 USB 序號 —— 沒有序號 Windows 的 adb 會略過這台。唯讀，理由同 /asusfw；
+# nofail：掛不上只是沒有序號，不該擋開機
+/dev/block/bootdevice/by-name/factory                        /factory                  ext4    ro,nosuid,nodev,noatime,noload,context=u:object_r:factory_file:s0                                    wait,nofail
+
+/devices/soc/c0a4900.sdhci/mmc_host*                         auto                      auto    defaults                                                                                             voldmanaged=sdcard1:auto
+/devices/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb* auto                      auto    defaults                                                                                             voldmanaged=usb:auto
+
+/dev/block/zram0                                             none                      swap    defaults                                                                                             zramsize=25%

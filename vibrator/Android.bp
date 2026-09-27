@@ -1,0 +1,22 @@
+//
+// SPDX-FileCopyrightText: 2026 ZS551KL port
+// SPDX-License-Identifier: Apache-2.0
+//
+// timed_output 的 AIDL vibrator（見 Vibrator.h）
+
+cc_binary {
+    name: "android.hardware.vibrator-service.z01g",
+    relative_install_path: "hw",
+    init_rc: ["android.hardware.vibrator-service.z01g.rc"],
+    vintf_fragments: ["android.hardware.vibrator-service.z01g.xml"],
+    vendor: true,
+    srcs: [
+        "Vibrator.cpp",
+        "service.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder_ndk",
+        "android.hardware.vibrator-V2-ndk",
+    ],
+}

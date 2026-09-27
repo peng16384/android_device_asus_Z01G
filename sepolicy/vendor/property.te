@@ -1,0 +1,20 @@
+vendor_internal_prop(thermal_engine_prop)
+vendor_internal_prop(vendor_device_prop)
+
+# ASUS / Oreo blob 用的舊式屬性名（沒有 vendor. 前綴）。原本落在 default_prop / system_prop /
+# exported_default_prop：通用型別不能給單一網域寫（neverallow），所以各給專屬型別。
+# public：系統側（system_server、App）也可能讀。⚠ 自訂型別等於拿掉所有人的讀取權 ——
+# 讀取權在 z01g.te 用 get_prop 還回去（16.0 踩過：keymaster 讀不到 sys.listeners.registered 開不了機）
+vendor_public_prop(asus_fp_hw_prop)        # vendor.asus.fp.hwmodule（fpseek 寫，init 抄進 ro.hardware.fingerprint）
+#   ro.hardware.fingerprint 是 AOSP 的 exported_default_prop（exact），只准 init / vendor_init 寫
+#   （domain.te 的 neverallow），也不能在 vendor 重新定義 -> extract-files.py 把 fpseek 裡的屬性名換掉
+vendor_public_prop(asus_fp_prop)           # persist.asus.fp.*（指紋喚醒）
+vendor_public_prop(goodix_fp_prop)         # goodix.*（gxFpDaemon / fps_hal 的版本與就緒旗標）
+vendor_public_prop(asus_audbg_prop)        # persist.asus.audbg（耳機孔 UART/音訊切換）
+vendor_public_prop(asus_camera_prop)       # camera.app.* / camera.beautylive.* / camera.hw.eeprom.*
+vendor_public_prop(asus_display_pvc_prop)  # persist.asus.pvcabc（相機 HAL 寫）
+vendor_public_prop(asus_gps_prop)          # persist.np.asus.*（ASUS GNSS impl）
+vendor_public_prop(asus_sensors_prop)      # sys.asus.accelerometer_on（感測器 HAL）
+vendor_public_prop(asus_ssn_prop)          # vendor.asus.ssn（init.z01g.ssn.sh 讀 /factory/SSN 後交給 init 設 ro.serialno）
+vendor_public_prop(legacy_tee_listener_prop) # sys.listeners.registered（init 從 vendor.sys.listeners.registered 抄過來）
+vendor_public_prop(legacy_post_boot_prop)    # sys.post_boot.parsed（ASUS 的 init.qcom.post_boot.sh 寫完參數時設）
