@@ -54,9 +54,13 @@ cloned straight into a LineageOS checkout:
 git clone -b lineage-22.2 <this repo> device/asus/Z01G
 ```
 
-The 22.2 kernel source is at
-[peng16384/android_kernel_asus_msm8998](https://github.com/peng16384/android_kernel_asus_msm8998)
-(branch `lineage-22.2-z01g`).
+Kernel source (GPL-2.0) is at
+[peng16384/android_kernel_asus_msm8998](https://github.com/peng16384/android_kernel_asus_msm8998):
+
+| Branch | Used by | Contents |
+|---|---|---|
+| `lineage-22.2-z01g` | 22.2 | LineageOS msm8998 kernel 4.4.302 + ASUS drivers + CIP 4.4 SLTS fixes |
+| `lineage-16.0-z01g` | 16.0 (`v1.0`) | ASUS stock 15.0410.1911.117 source (4.4.78) + six changes (AIO, qcacld-3.0 Wi-Fi, vidc) |
 
 ## Downloads, and what is proprietary
 
@@ -163,9 +167,13 @@ device tree 放在版本分支的**根目錄**，可以直接 clone 進 LineageO
 git clone -b lineage-22.2 <本 repo> device/asus/Z01G
 ```
 
-22.2 的 kernel 原始碼在
-[peng16384/android_kernel_asus_msm8998](https://github.com/peng16384/android_kernel_asus_msm8998)
-（`lineage-22.2-z01g` 分支）。
+kernel 原始碼（GPL-2.0）在
+[peng16384/android_kernel_asus_msm8998](https://github.com/peng16384/android_kernel_asus_msm8998)：
+
+| 分支 | 給誰用 | 內容 |
+|---|---|---|
+| `lineage-22.2-z01g` | 22.2 | LineageOS 的 msm8998 kernel 4.4.302 + ASUS 驅動 + CIP 4.4 SLTS 的修補 |
+| `lineage-16.0-z01g` | 16.0（`v1.0`）| ASUS 原廠 15.0410.1911.117 原始碼（4.4.78）+ 6 個修改（AIO、qcacld-3.0 Wi-Fi、vidc）|
 
 ## 下載，以及哪些是專有檔案
 
