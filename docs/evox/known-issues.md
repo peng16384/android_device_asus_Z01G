@@ -5,9 +5,12 @@
 > [`../22.2/known-issues.md`](../22.2/known-issues.md) — notably Widevine L3 and
 > no NFC. Specific to Evolution X:
 >
-> - The system partition is 5 GB and the build with full Google apps uses
->   4.8 GB of it. If future Google apps grow past that, the build will switch to
->   a smaller Google apps set.
+> - Google apps are the **mini** set: Google Photos, Recorder, ARCore, Pixel live
+>   wallpapers and a few other Pixel extras are not included (most can be
+>   installed from the Play Store). The full set would not fit GitHub's 2 GiB
+>   file limit.
+> - The GNSS service crashes once shortly after every boot, inside ASUS's
+>   location library, and is restarted automatically; GPS works afterwards.
 > - "Network location without GApps" from the LineageOS list does not apply:
 >   Google services are built in.
 >
@@ -20,12 +23,23 @@
 
 ## Evolution X 特有的
 
-### system 分割快滿了
+### Google App 是精簡版（mini）
 
-這台的 system 分割只有 5 GB，內建完整 Google 服務的 Evolution X 用掉 4.8 GB
-（LineageOS 版是 2.4 GB）。system 是唯讀的，剩多少不影響使用；
-但如果之後的 Google App 再變大、放不下，會改用 Evolution X 的精簡版 GApps
-（到時候會在 release 說明裡寫明少了哪些 Google App）。
+內建的是 Evolution X 的 **mini** GApps。和完整版相比少了：
+Google 相簿、錄音機、ARCore、Pixel 動態桌布與桌布、Google Fi、聲音放大器、
+Voice Access、切換控制、天氣等 Pixel 附加 App（多數可以從 Play 商店裝回來）；
+Android System Intelligence 是較小的舊版。
+Google Play 服務、Play 商店、Google App、Google 訊息、日曆、Files 都在。
+
+原因：完整版的 zip 是 2.44 GiB，超過 GitHub Release 單檔 2 GiB 的上限。
+mini 版 zip 1.9 GiB，system 用掉 4.1 GB（分割 5 GB）。
+
+### 每次開機，GNSS 服務會當機一次
+
+開機後不久，`android.hardware.gnss@1.0-service` 會在 ASUS 原廠的定位程式庫
+（`libdataitems.so`，處理網路狀態通知時）因記憶體配置失敗而中止，系統隨即自動重啟它，
+之後 GPS 正常。LineageOS 與 Evolution X 用的是同一套程式與設定，
+但目前只在 Evolution X 上觀察到；觸發它的那一次呼叫還沒有抓到。
 
 ---
 

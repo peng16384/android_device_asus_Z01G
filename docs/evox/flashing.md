@@ -27,7 +27,7 @@ Releases 裡 Evolution X 的那一版：
 
 | 檔案 | 用途 |
 |---|---|
-| `EvolutionX-15.0-<日期>-Z01G-<版本>-Unofficial.zip` | ROM 本體（**已內建 Google 服務**）|
+| `EvolutionX-15.0-<日期>-Z01G-<版本>-Unofficial.zip` | ROM 本體（**已內建 Google 服務**，mini 版，見 known-issues）|
 | `recovery.img` | LineageOS Recovery（Evolution X 沿用）|
 | `SHA256SUMS` | 先核對再刷 |
 
@@ -51,7 +51,7 @@ Evolution X 的 zip，而且**第 6 步（GApps）跳過**：
 adb sideload EvolutionX-15.0-<日期>-Z01G-<版本>-Unofficial.zip
 ```
 
-zip 比 LineageOS 的大（約 2.6 GB），傳輸久一點。
+zip 比 LineageOS 的大（約 1.9 GB），傳輸久一點。
 
 ## 4. 已知問題
 
